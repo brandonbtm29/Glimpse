@@ -30,6 +30,15 @@
     <label>Colour
       <input type="color" name="color" value="{{ row.color }}">
     </label>
+    {% if cfg.groups %}
+    <label>Group
+      <select name="group">
+        <option value="">No group</option>
+        {% for gid, grp in cfg.groups.items() %}<option value="{{ gid }}" {% if row.group == gid %}selected{% endif %}>{{ grp.name }}</option>{% endfor %}
+      </select>
+      <span class="hint">Audiences use the group's level unless you set this calendar on its own.</span>
+    </label>
+    {% endif %}
     <label><span>Replace feed link <span class="muted">(leave blank to keep)</span></span>
       <input type="text" name="url" value="" placeholder="Paste a new link only if it changed" autocomplete="off" spellcheck="false">
     </label>
@@ -41,7 +50,7 @@
 <section class="panel">
   <div class="panelhead"><h2>Who sees this calendar</h2><a href="/sharing">Change &rarr;</a></div>
   <ul class="chips">
-    {% for title, lvl in used_by %}<li><span class="lvl lvl-{{ lvl }}">{{ lvl }}</span> {{ title }}</li>{% endfor %}
+    {% for title, lvl, src in used_by %}<li><span class="lvl lvl-{{ lvl }}">{{ lvl }}</span> {{ title }}{% if src != 'calendar' %} <span class="muted small">({{ 'from group' if src == 'group' else 'default' }})</span>{% endif %}</li>{% endfor %}
   </ul>
 </section>
 {% endif %}

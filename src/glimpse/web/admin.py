@@ -31,9 +31,10 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from starlette.concurrency import run_in_threadpool
 
 from .. import __version__, autostart, tailscale
-from ..config import WEEKDAYS, AppConfig, AudienceCfg, ConfigError, Level
+from ..config import WEEKDAYS, AppConfig, AudienceCfg, ConfigError, Level, RuleCfg
 from ..core import allowed_week_bounds, week_range, week_start
 from ..events import parse_events
+from ..policy import rule_matches
 from ..render.week import PALETTE_SIZE, build_week, fmt_day, fmt_time
 from ..sources import USER_AGENT, normalize_url
 from ..store import Draft, _env_name, finish_setup
@@ -76,7 +77,13 @@ FLASH = {
     "ts_public_off": "Share links are no longer public.",
     "auto_on": "Glimpse will start automatically when you sign in.",
     "auto_off": "Automatic start turned off.",
+    "grp_added": "Group created. Put calendars in it below, then set its level on Who sees what.",
+    "grp_deleted": "Group removed. Its calendars are still here, now without a group.",
+    "rule_added": "Rule added. It applies to every audience right away.",
+    "rule_deleted": "Rule removed.",
 }
+RULE_FIELDS = {"title": "Title", "notes": "Notes", "location": "Location"}
+RULE_PREVIEW_WEEKS = 4
 
 ADMIN_HEADERS = {
     "Content-Security-Policy": (
@@ -290,8 +297,24 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                     "count": sum(1 for ev in events if ev.calendar_id == cid),
                     "masked": mask_url(cal.url),
                     "provider": provider_of(cal.url),
+                    "group": c.group_of(cid),
                 }
             )
+        return rows
+
+    def sharing_rows() -> list[dict]:
+        """Calendars ordered by group: a header row per group, then its calendars, then the ungrouped."""
+        c = cfg()
+        feeds = {r["id"]: r for r in feed_rows()}
+        rows: list[dict] = []
+        for gid, grp in c.groups.items():
+            members = [feeds[cid] for cid in grp.calendars if cid in feeds]
+            rows.append({"kind": "group", "id": gid, "name": grp.name, "count": len(members)})
+            rows.extend({"kind": "cal", "feed": f, "group": gid} for f in members)
+        loose = [f for f in feeds.values() if f["group"] is None]
+        if loose and c.groups:
+            rows.append({"kind": "loose"})
+        rows.extend({"kind": "cal", "feed": f, "group": None} for f in loose)
         return rows
 
     # -- sign in -------------------------------------------------------------------------
@@ -518,7 +541,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return calendars_page(request, sess)
 
     def _cal_values(form) -> dict[str, str]:
-        return {k: str(form.get(k, "")).strip() for k in ("name", "url", "label", "color")}
+        return {k: str(form.get(k, "")).strip() for k in ("name", "url", "label", "color", "group")}
 
     @app.post("/calendars/test", response_class=HTMLResponse)
     async def calendars_test(request: Request):
@@ -542,7 +565,13 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 request, sess, v, error="A name and a feed link are both needed.", status=400
             )
         try:
-            await save(lambda d: d.add_calendar(v["name"], v["url"], v["label"] or None, v["color"] or None))
+
+            def mutate(d: Draft) -> None:
+                cid = d.add_calendar(v["name"], v["url"], v["label"] or None, v["color"] or None)
+                if v["group"] in d.groups:
+                    d.set_calendar_group(cid, v["group"])
+
+            await save(mutate)
         except ConfigError as exc:
             return calendars_page(request, sess, v, error=str(exc), status=400)
         return done("/calendars", "cal_added")
@@ -555,7 +584,10 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         row = next((r for r in feed_rows() if r["id"] == cid), None)
         if row is None:
             return RedirectResponse("/calendars", status_code=303)
-        used_by = [(aud.title, cfg().level_for(aud, cid).value) for aud in cfg().audiences.values()]
+        used_by = [
+            (aud.title, cfg().level_for(aud, cid).value, cfg().level_source(aud, cid))
+            for aud in cfg().audiences.values()
+        ]
         return page(
             request, "admin/calendar_edit.html", {"row": row, "used_by": used_by, "error": None}, sess
         )
@@ -581,6 +613,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node["color"] = v["color"]
             if v["url"]:
                 d.set_secret(node, "url", v["url"], _env_name("CAL", cid, "URL"))
+            d.set_calendar_group(cid, v["group"] if v["group"] in d.groups else None)
 
         try:
             await save(mutate)
@@ -599,14 +632,73 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         await save(lambda d: d.remove_calendar(cid))
         return done("/calendars", "cal_deleted")
 
+    # -- groups ----------------------------------------------------------------------------
+
+    @app.post("/groups/add", response_class=HTMLResponse)
+    async def group_add(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        name = str(form.get("name", "")).strip()[:60]
+        if not name:
+            return calendars_page(request, sess, error="Give the group a name.", status=400)
+        members = [cid for cid in form.getlist("calendar") if cid in cfg().calendars]
+
+        def mutate(d: Draft) -> None:
+            gid = d.add_group(name)
+            for cid in members:
+                d.set_calendar_group(cid, gid)
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return calendars_page(request, sess, error=str(exc), status=400)
+        return done("/calendars", "grp_added")
+
+    @app.post("/groups/{gid}", response_class=HTMLResponse)
+    async def group_save(request: Request, gid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if gid not in cfg().groups:
+            return RedirectResponse("/calendars", status_code=303)
+        name = str(form.get("name", "")).strip()[:60]
+        members = {cid for cid in form.getlist("calendar") if cid in cfg().calendars}
+
+        def mutate(d: Draft) -> None:
+            if name:
+                d.rename_group(gid, name)
+            for cid in d.calendars:
+                if cid in members:
+                    d.set_calendar_group(cid, gid)
+                elif d.group_of(cid) == gid:
+                    d.set_calendar_group(cid, None)
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return calendars_page(request, sess, error=str(exc), status=400)
+        return done("/calendars", "saved")
+
+    @app.post("/groups/{gid}/delete")
+    async def group_delete(request: Request, gid: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        await save(lambda d: d.remove_group(gid))
+        return done("/calendars", "grp_deleted")
+
     # -- sharing matrix --------------------------------------------------------------------
+
+    def sharing_page(request, sess, error=None, status=200):
+        return page(request, "admin/sharing.html", {"rows": sharing_rows(), "error": error}, sess, status)
 
     @app.get("/sharing", response_class=HTMLResponse)
     def sharing(request: Request):
         sess = session(request)
         if not sess:
             return to_login()
-        return page(request, "admin/sharing.html", {"feeds": feed_rows(), "error": None}, sess)
+        return sharing_page(request, sess)
 
     @app.post("/sharing", response_class=HTMLResponse)
     async def sharing_save(request: Request):
@@ -627,11 +719,22 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                     elif val == "default":
                         cals.pop(cid, None)
                 node["calendars"] = cals
+                grps = node.get("groups") or {}
+                for gid in d.groups:
+                    val = str(form.get(f"grp__{aid}__{gid}", "default"))
+                    if val in LEVELS:
+                        grps[gid] = val
+                    elif val == "default":
+                        grps.pop(gid, None)
+                if grps:
+                    node["groups"] = grps
+                else:
+                    node.pop("groups", None)
 
         try:
             await save(mutate)
         except ConfigError as exc:
-            return page(request, "admin/sharing.html", {"feeds": feed_rows(), "error": str(exc)}, sess, 400)
+            return sharing_page(request, sess, str(exc), 400)
         return done("/sharing", "saved")
 
     # -- audiences ---------------------------------------------------------------------------
@@ -764,6 +867,147 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         await save(lambda d: d.remove_audience(aid))
         return done("/sharing", "aud_deleted")
 
+    # -- privacy rules -----------------------------------------------------------------------
+
+    def rule_matches_upcoming(rule: RuleCfg) -> list[dict]:
+        """Upcoming events this rule catches. Shown only to the owner, in the panel."""
+        c = cfg()
+        g = rt.glimpse
+        s, _ = week_range(week_start(g.today(), c), c)
+        e = s + timedelta(weeks=RULE_PREVIEW_WEEKS)
+        out = []
+        for ev in g.events_between(s, e):
+            if rule_matches(rule, ev):
+                cal = c.calendars.get(ev.calendar_id)
+                out.append(
+                    {
+                        "title": ev.summary or "(no title)",
+                        "when": f"{fmt_day(ev.start.date())}"
+                        + ("" if ev.all_day else f" {fmt_time(ev.start)}"),
+                        "calendar": cal.name if cal else ev.calendar_id,
+                    }
+                )
+        return out
+
+    def rules_page(request, sess, form_values=None, test=None, error=None, status=200):
+        c = cfg()
+        rules = [{"i": i, "rule": r, "matches": rule_matches_upcoming(r)} for i, r in enumerate(c.rules)]
+        values = form_values or {
+            "name": "",
+            "match": "",
+            "fields": list(RULE_FIELDS),
+            "action": "busy",
+            "calendars": [],
+            "enabled": True,
+        }
+        return page(
+            request,
+            "admin/rules.html",
+            {
+                "rules": rules,
+                "form": values,
+                "test": test,
+                "fields": RULE_FIELDS,
+                "feeds": feed_rows(),
+                "weeks": RULE_PREVIEW_WEEKS,
+                "error": error,
+            },
+            sess,
+            status,
+        )
+
+    def _rule_values(form) -> dict[str, Any]:
+        words = re.split(r"[\n,]+", str(form.get("match", "")))
+        return {
+            "name": str(form.get("name", "")).strip()[:60],
+            "match": "\n".join(w.strip() for w in words if w.strip()),
+            "fields": [f for f in form.getlist("field") if f in RULE_FIELDS],
+            "action": "hidden" if form.get("action") == "hidden" else "busy",
+            "calendars": [cid for cid in form.getlist("calendar") if cid in cfg().calendars],
+            "enabled": not form.getlist("enabled") or "on" in form.getlist("enabled"),
+        }
+
+    def _rule_raw(v: dict[str, Any]) -> dict[str, Any]:
+        raw: dict[str, Any] = {"match": v["match"].splitlines(), "action": v["action"]}
+        if v["name"]:
+            raw["name"] = v["name"]
+        if v["fields"] and set(v["fields"]) != set(RULE_FIELDS):
+            raw["fields"] = v["fields"]
+        elif not v["fields"]:
+            raw["fields"] = []  # rejected by validation with a clear message
+        if v["calendars"]:
+            raw["calendars"] = v["calendars"]
+        if not v["enabled"]:
+            raw["enabled"] = False
+        return raw
+
+    def _rule_error(v: dict[str, Any]) -> str | None:
+        if not v["match"]:
+            return "Add at least one word or phrase to look for."
+        if not v["fields"]:
+            return "Pick at least one place to look (title, notes or location)."
+        return None
+
+    @app.get("/rules", response_class=HTMLResponse)
+    def rules(request: Request):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        return rules_page(request, sess)
+
+    @app.post("/rules/test", response_class=HTMLResponse)
+    async def rules_test(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        v = _rule_values(form)
+        err = _rule_error(v)
+        if err:
+            return rules_page(request, sess, v, error=err, status=400)
+        rule = RuleCfg.model_validate({**_rule_raw(v), "enabled": True})
+        return rules_page(request, sess, v, test=rule_matches_upcoming(rule))
+
+    @app.post("/rules/add", response_class=HTMLResponse)
+    async def rules_add(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        v = _rule_values(form)
+        err = _rule_error(v)
+        if err:
+            return rules_page(request, sess, v, error=err, status=400)
+        try:
+            await save(lambda d: d.set_rule(None, _rule_raw(v)))
+        except ConfigError as exc:
+            return rules_page(request, sess, v, error=str(exc), status=400)
+        return done("/rules", "rule_added")
+
+    @app.post("/rules/{index}", response_class=HTMLResponse)
+    async def rules_save(request: Request, index: int):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if not 0 <= index < len(cfg().rules):
+            return RedirectResponse("/rules", status_code=303)
+        v = _rule_values(form)
+        err = _rule_error(v)
+        if err:
+            return rules_page(request, sess, error=f"Rule {index + 1}: {err}", status=400)
+        try:
+            await save(lambda d: d.set_rule(index, _rule_raw(v)))
+        except ConfigError as exc:
+            return rules_page(request, sess, error=str(exc), status=400)
+        return done("/rules", "saved")
+
+    @app.post("/rules/{index}/delete")
+    async def rules_delete(request: Request, index: int):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if 0 <= index < len(cfg().rules):
+            await save(lambda d: d.remove_rule(index))
+        return done("/rules", "rule_deleted")
+
     # -- preview -------------------------------------------------------------------------------
 
     @app.get("/preview", response_class=HTMLResponse)
@@ -800,6 +1044,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "outside": outside,
                 "link": public_link(aud) if view_as != "_all" else None,
                 "hour_px": 40,
+                "show_copies": True,
             },
             sess,
         )
@@ -850,6 +1095,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             ov["private_tag"] = str(form.get("private_tag", "#private")).strip()
             ov["hide_tag"] = str(form.get("hide_tag", "#hide")).strip()
             ov["honor_private_flag"] = form.get("honor_private_flag") == "on"
+            ov["merge_duplicates"] = form.get("merge_duplicates") == "on"
             d.section("admin")["allowed_tailscale_users"] = users
 
         try:

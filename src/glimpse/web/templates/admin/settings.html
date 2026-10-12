@@ -51,6 +51,13 @@
       </label>
     </div>
     <label class="check"><input type="checkbox" name="honor_private_flag" {% if cfg.overrides.honor_private_flag %}checked{% endif %}> Treat events marked Private in Outlook or Google as Busy only</label>
+    <p class="fine">For words that should always be kept private (like &ldquo;doctor&rdquo;), use <a href="/rules">Privacy rules</a>.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Duplicate events</h2>
+    <label class="check"><input type="checkbox" name="merge_duplicates" {% if cfg.overrides.merge_duplicates %}checked{% endif %}> Show an event once when it's on more than one of your calendars</label>
+    <p class="hint">Glimpse treats events as the same when they share an invite ID, or have the same title and exact times on different calendars. The merged event uses the most detailed level any of its calendars allows, but if any copy is marked private or caught by a privacy rule, that limit wins.</p>
   </section>
 
   <section class="panel">

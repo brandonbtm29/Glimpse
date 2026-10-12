@@ -2,9 +2,10 @@ import re
 
 import pytest
 from argon2 import PasswordHasher
-from conftest import COWORKER_SLUG, FIXTURES, WEEK
+from conftest import COWORKER_SLUG, FIXTURES, PARTNER_PASSWORD, PARTNER_SLUG, WEEK
 from fastapi.testclient import TestClient
 
+from glimpse.config import Level
 from glimpse.store import ConfigStore
 from glimpse.web.admin import create_admin_app, mask_url
 from glimpse.web.app import create_app
@@ -260,3 +261,95 @@ def test_hand_edits_are_picked_up(admin, rt):
     path.write_text(path.read_text().replace("default: full", "default: everything"))
     html = admin.get("/").text
     assert "has a problem" in html and rt.cfg.audiences["partner"].default.value == "full"
+
+
+# --- phase 2: groups, rules, duplicates ---------------------------------------------------
+
+
+def test_group_create_and_set_level(admin, rt):
+    c = sign_in(admin)
+    r = admin.post("/groups/add", data={"csrf": c, "name": "Work", "calendar": ["lab", "classes"]})
+    assert r.status_code == 303
+    assert rt.cfg.groups["work"].calendars == ["lab", "classes"]
+    html = admin.get("/sharing").text
+    assert 'name="grp__coworkers__work"' in html and "Group (" not in html
+    form = {
+        "csrf": c,
+        "default__partner": "full",
+        "default__coworkers": "busy",
+        "grp__coworkers__work": "full",
+    }
+    form |= {"lvl__coworkers__lab": "default", "lvl__coworkers__classes": "default"}
+    assert admin.post("/sharing", data=form).status_code == 303
+    aud = rt.cfg.audiences["coworkers"]
+    assert aud.groups["work"] is Level.FULL and "lab" not in aud.calendars
+    assert rt.cfg.level_for(aud, "classes") is Level.FULL
+    assert "Group (full)" in admin.get("/sharing").text
+    # edit the group: drop classes
+    admin.post("/groups/work", data={"csrf": c, "name": "Job", "calendar": ["lab"]})
+    assert rt.cfg.groups["work"].name == "Job" and rt.cfg.groups["work"].calendars == ["lab"]
+    # calendar page picker moves it back
+    admin.post("/calendars/classes", data={"csrf": c, "name": "Classes", "group": "work", "color": "#3b6fd8"})
+    assert rt.cfg.group_of("classes") == "work"
+    admin.post("/groups/work/delete", data={"csrf": c})
+    assert rt.cfg.groups == {} and rt.cfg.audiences["coworkers"].groups == {}
+
+
+def test_rules_page_add_test_and_delete(admin, rt):
+    c = sign_in(admin)
+    assert "Add your first rule" in admin.get("/rules").text
+    form = {
+        "csrf": c,
+        "name": "Health",
+        "match": "doctor, clinic",
+        "field": ["title", "location"],
+        "action": "busy",
+    }
+    r = admin.post("/rules/test", data=form)
+    assert r.status_code == 200 and "Doctor appointment" in r.text  # owner-only preview of matches
+    assert rt.cfg.rules == []  # testing doesn't save
+    assert admin.post("/rules/add", data=form).status_code == 303
+    rule = rt.cfg.rules[0]
+    assert rule.match == ["doctor", "clinic"] and rule.fields == ["title", "location"]
+    page = admin.get("/rules").text
+    assert "Health" in page and "Catches" in page
+    # turn it off (hidden field only, checkbox unticked)
+    admin.post("/rules/0", data={**form, "enabled": "off"})
+    assert rt.cfg.rules[0].enabled is False
+    assert admin.post("/rules/add", data={**form, "match": "  "}).status_code == 400
+    assert admin.post("/rules/add", data={**form, "field": []}).status_code == 400
+    admin.post("/rules/0/delete", data={"csrf": c})
+    assert rt.cfg.rules == []
+
+
+def test_rule_applies_to_public_view_immediately(admin, public, rt):
+    c = sign_in(admin)
+    admin.post("/rules/add", data={"csrf": c, "match": "lab work", "field": ["title"], "action": "hidden"})
+    html = public.get(f"/a/{COWORKER_SLUG}/week/{WEEK.isoformat()}").text
+    assert "Lab work" not in html
+
+
+def test_merge_duplicates_setting_and_preview_badge(admin, rt, public):
+    c = sign_in(admin)
+    s = admin.get("/settings").text
+    assert 'name="merge_duplicates" checked' in s
+    form = {"csrf": c, "timezone": "America/New_York", "week_starts": "monday", "refresh_minutes": "10"}
+    form |= {"private_tag": "#private", "hide_tag": "#hide", "honor_private_flag": "on"}
+    admin.post("/settings", data=form)
+    assert rt.cfg.overrides.merge_duplicates is False
+    admin.post("/settings", data={**form, "merge_duplicates": "on"})
+    assert rt.cfg.overrides.merge_duplicates is True
+
+
+def test_duplicate_calendar_merged_and_badge_only_in_preview(admin, rt, public):
+    c = sign_in(admin)
+    url = str(FIXTURES / "personal.ics")
+    admin.post("/calendars/add", data={"csrf": c, "name": "Personal copy", "url": url, "color": "#123456"})
+    rt.refresh()
+    w = WEEK.isoformat()
+    prev = admin.get(f"/preview?view_as=_all&week={w}").text
+    assert 'class="copies"' in prev and "×2" in prev
+    public.post(f"/a/{PARTNER_SLUG}/login", data={"password": PARTNER_PASSWORD, "next": w})
+    html = public.get(f"/a/{PARTNER_SLUG}/week/{w}").text
+    assert 'class="copies"' not in html
+    assert html.count(">Dinner with Sam<") == 2  # once in the grid, once in the phone list

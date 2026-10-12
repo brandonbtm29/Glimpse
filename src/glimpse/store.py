@@ -130,6 +130,79 @@ class Draft:
         for aud in self.audiences.values():
             if isinstance(aud, dict) and isinstance(aud.get("calendars"), dict):
                 aud["calendars"].pop(cid, None)
+        for grp in (self.raw.get("groups") or {}).values():
+            if isinstance(grp, dict) and isinstance(grp.get("calendars"), list):
+                grp["calendars"] = [c for c in grp["calendars"] if c != cid]
+        for rule in self.raw.get("rules") or []:
+            if isinstance(rule, dict) and isinstance(rule.get("calendars"), list) and rule["calendars"]:
+                rule["calendars"] = [c for c in rule["calendars"] if c != cid]
+                if not rule["calendars"]:
+                    # A rule limited to calendars that no longer exist would otherwise
+                    # silently start applying to every calendar.
+                    rule["enabled"] = False
+                    rule["calendars"] = []
+
+    # -- groups --------------------------------------------------------------
+
+    @property
+    def groups(self) -> dict[str, Any]:
+        return self.section("groups")
+
+    def add_group(self, name: str) -> str:
+        gid = make_id(name, self.groups)
+        self.groups[gid] = {"name": name.strip(), "calendars": []}
+        return gid
+
+    def rename_group(self, gid: str, name: str) -> None:
+        self.groups[gid]["name"] = name.strip()
+
+    def remove_group(self, gid: str) -> None:
+        """Delete a group. Its calendars stay; audiences fall back to per-calendar/default levels."""
+        self.groups.pop(gid, None)
+        for aud in self.audiences.values():
+            if isinstance(aud, dict) and isinstance(aud.get("groups"), dict):
+                aud["groups"].pop(gid, None)
+                if not aud["groups"]:
+                    aud.pop("groups")
+
+    def set_calendar_group(self, cid: str, gid: str | None) -> None:
+        """Put calendar ``cid`` in group ``gid`` (``None`` = no group). A calendar is in at most one group."""
+        for key, grp in self.groups.items():
+            members = grp.setdefault("calendars", [])
+            if key == gid:
+                if cid not in members:
+                    members.append(cid)
+            elif cid in members:
+                members.remove(cid)
+
+    def group_of(self, cid: str) -> str | None:
+        for key, grp in (self.raw.get("groups") or {}).items():
+            if cid in (grp.get("calendars") or []):
+                return key
+        return None
+
+    # -- privacy rules -------------------------------------------------------
+
+    @property
+    def rules(self) -> list[Any]:
+        node = self.raw.get("rules")
+        if not isinstance(node, list):
+            node = []
+            self.raw["rules"] = node
+        return node
+
+    def set_rule(self, index: int | None, rule: dict[str, Any]) -> int:
+        """Add (``index=None``) or replace a rule. Returns its index."""
+        clean = {k: v for k, v in rule.items() if v not in (None, [], "")}
+        clean.setdefault("match", [])
+        if index is None:
+            self.rules.append(clean)
+            return len(self.rules) - 1
+        self.rules[index] = clean
+        return index
+
+    def remove_rule(self, index: int) -> None:
+        del self.rules[index]
 
     def add_audience(self, title: str, default: str = "busy") -> str:
         aid = make_id(title, self.audiences)

@@ -24,8 +24,11 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **Settings panel in your browser**: add calendar links, decide who sees what, and preview every audience's exact view. Works from any device on your Tailscale network (Mac, Windows, phone); never exposed publicly.
 - **Any number of calendars** from Google, Outlook / Microsoft 365, iCloud, or anything else that publishes an ICS feed.
 - **Five detail levels**, set per audience *and* per calendar: `full`, `title`, `label`, `busy`, `hidden`.
+- **Calendar groups**: put related calendars together (e.g. "Work" = university + lab) and set one level per group, with per-calendar exceptions.
 - **Time windows**: show an audience only certain days and hours (e.g. Mon–Fri 8:00–18:00).
 - **Per-event overrides**: put `#private` in an event to make it "Busy" for everyone, or `#hide` to hide it. Events marked Private in Outlook/Google are treated as `#private` automatically.
+- **Keyword privacy rules**: "anything mentioning *doctor* or *therapy* is Busy for everyone", or "hide anything with *interview*". Whole-word, case- and accent-insensitive, optionally limited to some calendars, with a preview of which upcoming events a rule catches.
+- **Duplicate merging**: a meeting that's on two of your calendars (say, invited on work and copied to personal) shows once. If any copy is private or caught by a rule, that wins.
 - **Optional passwords** per audience (Argon2-hashed, rate-limited, 30-day sign-in), and one-click "new link" to cut off access.
 - **Excel download** of any visible week, and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
 - Recurring events, moved/cancelled instances, all-day and overnight events, and daylight-saving changes all handled.
@@ -61,7 +64,7 @@ iCloud  ─┘               │           ── :8001 settings     ── Tail
 
 - **Filtering happens on the server, before rendering.** If an audience may not see a title, the title is never put in the HTML, the Excel file, or the feed. There's nothing hidden "in the page" to dig out.
 - **Busy blocks are anonymous**: no calendar name, no colour, no original event ID. Overlapping busy blocks are merged, so viewers can't count your meetings.
-- **Overrides only reduce detail**, never increase it.
+- **Overrides and privacy rules only reduce detail**, never increase it. When duplicates are merged, the strictest restriction on any copy applies.
 - **Feed links stay on your PC** in `.env` (owner-only file permissions). The panel shows them masked; they're never logged, even in error messages, and the on-disk cache uses hashed file names.
 - **Unguessable links**: each audience's address contains a random 128-bit slug. Pages send `noindex`, `no-store`, `no-referrer` and a strict Content-Security-Policy.
 

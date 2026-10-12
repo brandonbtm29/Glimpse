@@ -1,0 +1,98 @@
+{% extends "admin/base.html" %}
+{% block title %}Privacy rules · Glimpse settings{% endblock %}
+
+{% macro rule_fields(v, prefix) %}
+  <div class="grid2">
+    <label><span>Name <span class="muted">(optional)</span></span>
+      <input type="text" name="name" value="{{ v.name }}" placeholder="Health" maxlength="60">
+    </label>
+    <label>Then show it as
+      <select name="action">
+        <option value="busy" {% if v.action == 'busy' %}selected{% endif %}>Busy, at most</option>
+        <option value="hidden" {% if v.action == 'hidden' %}selected{% endif %}>Nothing (hide it)</option>
+      </select>
+    </label>
+    <label class="span2">When an event mentions any of
+      <textarea name="match" rows="3" placeholder="doctor&#10;therapy&#10;interview" spellcheck="false" required>{{ v.match }}</textarea>
+      <span class="hint">One word or phrase per line (or separated by commas). Whole words only, and capitals and accents don't matter: &ldquo;dr&rdquo; matches &ldquo;Dr. Lee&rdquo; but not &ldquo;drive&rdquo;.</span>
+    </label>
+  </div>
+  <fieldset class="checks">
+    <legend>Look in</legend>
+    {% for key, label in fields.items() %}
+    <label class="check"><input type="checkbox" name="field" value="{{ key }}" {% if key in v.fields %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+  </fieldset>
+  {% if feeds | length > 1 %}
+  <fieldset class="checks">
+    <legend>Only on these calendars <span class="muted small">(none ticked = all calendars)</span></legend>
+    {% for f in feeds %}
+    <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}" {% if f.id in v.calendars %}checked{% endif %}>
+      <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}</label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+  <label class="check"><input type="hidden" name="enabled" value="off"><input type="checkbox" name="enabled" value="on" {% if v.enabled %}checked{% endif %}> Rule is on</label>
+{% endmacro %}
+
+{% macro match_list(matches) %}
+  {% if matches %}
+  <ul class="matches">
+    {% for m in matches[:12] %}<li><span class="when">{{ m.when }}</span><span>{{ m.title }}</span><span class="cal">{{ m.calendar }}</span></li>{% endfor %}
+  </ul>
+  {% if matches | length > 12 %}<p class="fine">…and {{ matches | length - 12 }} more.</p>{% endif %}
+  {% else %}
+  <p class="fine">Nothing in the next {{ weeks }} weeks matches.</p>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Privacy rules</h1>
+    <p class="muted">Keep certain events private everywhere, based on the words in them. A rule only ever lowers what people see: it applies to every audience, on top of <a href="/sharing">Who sees what</a>.</p>
+  </div>
+</header>
+
+{% for item in rules %}
+{% set r = item.rule %}
+<section class="panel rule{% if not r.enabled %} off{% endif %}" id="rule-{{ item.i }}">
+  <div class="panelhead">
+    <h2>{{ r.display_name }}</h2>
+    <span class="lvl lvl-{{ r.action }}">{{ r.action }}</span>
+  </div>
+  <form method="post" action="/rules/{{ item.i }}" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {{ rule_fields({"name": r.name or "", "match": r.match | join("\n"), "fields": r.fields, "action": r.action, "calendars": r.calendars, "enabled": r.enabled}, item.i) }}
+    <div class="actions">
+      <button type="submit" class="secondary">Save rule</button>
+      <button type="submit" formaction="/rules/{{ item.i }}/delete" class="link danger" data-confirm="Remove this rule?">Remove</button>
+    </div>
+  </form>
+  <details class="help"{% if item.matches %} open{% endif %}>
+    <summary>Catches {{ item.matches | length }} event{{ '' if item.matches | length == 1 else 's' }} in the next {{ weeks }} weeks{% if not r.enabled %} (when turned on){% endif %}</summary>
+    {{ match_list(item.matches) }}
+  </details>
+</section>
+{% endfor %}
+
+<section class="panel" id="new-rule">
+  <h2>{{ 'New rule' if rules else 'Add your first rule' }}</h2>
+  {% if not rules %}<p class="muted">Example: hide anything that mentions &ldquo;doctor&rdquo; or &ldquo;therapy&rdquo; behind a plain Busy block, even for people who normally see full details.</p>{% endif %}
+  <form method="post" action="/rules/add" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {{ rule_fields(form, "new") }}
+    {% if test is not none %}
+    <div class="testresult">
+      <p><strong>{{ test | length }} upcoming event{{ '' if test | length == 1 else 's' }} would be caught.</strong></p>
+      {{ match_list(test) }}
+    </div>
+    {% endif %}
+    <div class="actions">
+      <button type="submit" formaction="/rules/test" class="secondary">Check matches</button>
+      <button type="submit">Add rule</button>
+    </div>
+  </form>
+  <p class="fine">Only you see the matched events listed here.</p>
+</section>
+{% endblock %}

@@ -3,6 +3,11 @@
 {%- if b.color %}--ev: {{ b.color }};{% endif -%}
 {%- endmacro %}
 
+{# Owner-only hint (settings preview): this event was merged from copies on several calendars. #}
+{% macro copies(b) -%}
+{%- if show_copies and b.ev.copies > 1 %} <span class="copies" title="On {{ b.ev.copies }} of your calendars, shown once">×{{ b.ev.copies }}</span>{% endif -%}
+{%- endmacro %}
+
 {% macro hover(b) -%}
 {{ b.ev.title }} · {% if b.ev.all_day %}all day{% else %}{{ b.time_label }}{% endif %}
 {%- if b.ev.location %} · {{ b.ev.location }}{% endif %}
@@ -39,7 +44,7 @@
       {% for d in view.days %}
       <div class="alldaycell">
         {% for b in d.all_day %}
-        <div class="ev pill {{ b.color_class }}" style="{{ evstyle(b) }}" title="{{ hover(b) }}">{{ b.ev.title }}{% if not b.ev.all_day %} <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>{% endif %}</div>
+        <div class="ev pill {{ b.color_class }}" style="{{ evstyle(b) }}" title="{{ hover(b) }}">{{ b.ev.title }}{{ copies(b) }}{% if not b.ev.all_day %} <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>{% endif %}</div>
         {% endfor %}
       </div>
       {% endfor %}
@@ -56,7 +61,7 @@
         <div class="ev block {{ b.color_class }}{% if b.short %} short{% endif %}"
              style="top: {{ '%.3f' % b.top }}%; height: {{ '%.3f' % b.height }}%; left: calc({{ '%.3f' % b.left }}% + 2px); width: calc({{ '%.3f' % b.width }}% - 4px); {{ evstyle(b) }}"
              title="{{ hover(b) }}">
-          <span class="t">{{ b.ev.title }}</span>
+          <span class="t">{{ b.ev.title }}{{ copies(b) }}</span>
           <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>
           {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}
         </div>
@@ -76,7 +81,7 @@
         {% for b in items %}
         <li class="ev line {{ b.color_class }}" style="{{ evstyle(b) }}">
           <span class="when">{% if b.ev.all_day %}All day{% else %}{{ fmt_time(b.start) }} – {{ fmt_time(b.end) }}{% endif %}</span>
-          <span class="t">{{ b.ev.title }}</span>
+          <span class="t">{{ b.ev.title }}{{ copies(b) }}</span>
           {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}
           {% if b.ev.notes %}<span class="notes">{{ b.ev.notes }}</span>{% endif %}
         </li>

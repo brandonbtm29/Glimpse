@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from .config import AppConfig, AudienceCfg, HoursCfg, Level
+from .config import AppConfig, AudienceCfg, HoursCfg, Level, RuleCfg
 from .events import Event
 
 BUSY_TITLE = "Busy"
@@ -34,6 +36,7 @@ class VisibleEvent:
     color: str | None = None
     location: str = ""
     notes: str = ""
+    copies: int = 1  # >1 when duplicates on several calendars were merged (shown only to you)
 
 
 def _strip_tags(text: str, tags: list[str]) -> str:
@@ -51,19 +54,104 @@ def _opaque(*parts: object) -> str:
     return hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()[:20]
 
 
-def effective_level(cfg: AppConfig, audience: AudienceCfg, ev: Event) -> Level:
-    """The level an event is shown at, after per-event overrides.
+def fold(text: str) -> str:
+    """Lower-case and strip accents, for keyword matching ("Thérapy" -> "therapy")."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
 
-    Overrides only ever reduce detail.
+
+@lru_cache(maxsize=256)
+def _keyword_pattern(words: tuple[str, ...]) -> re.Pattern[str]:
+    alts = "|".join(re.escape(" ".join(fold(w).split())) for w in words)
+    return re.compile(rf"(?<!\w)(?:{alts})(?!\w)")
+
+
+def rule_matches(rule: RuleCfg, ev: Event) -> bool:
+    if not rule.enabled or (rule.calendars and ev.calendar_id not in rule.calendars):
+        return False
+    texts = {"title": ev.summary, "notes": ev.description, "location": ev.location}
+    pattern = _keyword_pattern(tuple(rule.match))
+    return any(pattern.search(" ".join(fold(texts[f]).split())) for f in rule.fields)
+
+
+def restriction(cfg: AppConfig, ev: Event) -> Level:
+    """The most this event may ever reveal, from tags, the Private flag and keyword rules.
+
+    FULL means "no restriction". These apply to every audience and only reduce detail.
     """
     ov = cfg.overrides
-    level = cfg.level_for(audience, ev.calendar_id)
     blob = f"{ev.summary}\n{ev.description}"
     if _contains(blob, ov.hide_tag):
         return Level.HIDDEN
+    cap = Level.FULL
     if _contains(blob, ov.private_tag) or (ov.honor_private_flag and ev.private):
-        level = level.at_most(Level.BUSY)
-    return level
+        cap = Level.BUSY
+    for rule in cfg.rules:
+        if rule_matches(rule, ev):
+            cap = cap.at_most(rule.level)
+            if cap is Level.HIDDEN:
+                break
+    return cap
+
+
+def effective_level(cfg: AppConfig, audience: AudienceCfg, ev: Event) -> Level:
+    """The level an event is shown at: its calendar's level, capped by any restriction."""
+    return cfg.level_for(audience, ev.calendar_id).at_most(restriction(cfg, ev))
+
+
+# --- duplicate merging ----------------------------------------------------------------
+
+
+@dataclass
+class Cluster:
+    """One real-world event, possibly present on several calendars."""
+
+    copies: list[Event]
+
+    def resolve(self, cfg: AppConfig, audience: AudienceCfg) -> tuple[Event, Level]:
+        """Most detailed copy this audience may see, capped by every copy's restrictions."""
+        best = max(self.copies, key=lambda e: cfg.level_for(audience, e.calendar_id).rank)
+        level = cfg.level_for(audience, best.calendar_id)
+        for ev in self.copies:
+            level = level.at_most(restriction(cfg, ev))
+        if len(self.copies) > 1 and not all(e.free for e in self.copies):
+            best = replace(best, free=False)
+        return best, level
+
+
+def _title_key(ev: Event) -> tuple:
+    return (" ".join(fold(ev.summary).split()), ev.start, ev.end, ev.all_day)
+
+
+def cluster_duplicates(events: list[Event], enabled: bool = True) -> list[Cluster]:
+    """Group copies of the same event: same UID and start, or same title, start and end."""
+    if not enabled:
+        return [Cluster([e]) for e in events]
+    parent = list(range(len(events)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[max(ri, rj)] = min(ri, rj)
+
+    seen: dict[tuple, int] = {}
+    for i, ev in enumerate(events):
+        for key in (("uid", ev.uid, ev.start, ev.all_day), ("title", *_title_key(ev))):
+            if key in seen:
+                if events[seen[key]].calendar_id != ev.calendar_id or key[0] == "uid":
+                    union(seen[key], i)
+            else:
+                seen[key] = i
+    clusters: dict[int, list[Event]] = {}
+    for i, ev in enumerate(events):
+        clusters.setdefault(find(i), []).append(ev)
+    return [Cluster(c) for _, c in sorted(clusters.items())]
 
 
 def _days(start: datetime, end: datetime) -> list[date]:
@@ -114,8 +202,9 @@ def visible_events(
     tags = [cfg.overrides.private_tag, cfg.overrides.hide_tag]
     out: list[VisibleEvent] = []
 
-    for ev in events:
-        level = effective_level(cfg, audience, ev)
+    for cluster in cluster_duplicates(events, cfg.overrides.merge_duplicates):
+        ev, level = cluster.resolve(cfg, audience)
+        copies = len(cluster.copies)
         if level is Level.HIDDEN:
             continue
         if ev.free and level in (Level.BUSY, Level.LABEL):
@@ -148,6 +237,7 @@ def visible_events(
                     color=cal.color,
                     location=_strip_tags(ev.location, tags),
                     notes=_strip_tags(ev.description, tags)[:MAX_NOTES],
+                    copies=copies,
                 )
             elif level is Level.TITLE:
                 ve = VisibleEvent(
@@ -160,6 +250,7 @@ def visible_events(
                     calendar_id=ev.calendar_id,
                     calendar_name=cal.name,
                     color=cal.color,
+                    copies=copies,
                 )
             elif level is Level.LABEL:
                 ve = VisibleEvent(

@@ -222,3 +222,23 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .steps-mini li.now { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .card .hint { display: inline; margin-left: 6px; }
 @media (max-width: 820px) { .setup-row { flex-direction: column; } }
+
+/* Groups in the sharing matrix */
+.matrix tr.grouprow th, .matrix tr.grouprow td { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border-top: 1px solid var(--line-strong); }
+.matrix tr.grouprow.loose th { font-size: 12.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.matrix tr.member th { padding-left: 28px; font-weight: 500; }
+.group-edit { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0 0 12px; }
+.group-edit.new { border-style: dashed; }
+fieldset.checks { flex-direction: row; flex-wrap: wrap; gap: 8px 18px; border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+fieldset.checks legend { font-size: 13px; font-weight: 600; margin-bottom: 6px; padding: 0; color: var(--ink); }
+button.link.danger { color: #c93a5c; background: none; }
+
+/* Privacy rules */
+.rule { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0 0 12px; }
+.rule.off { opacity: .65; }
+.form textarea[name=match] { font-family: inherit; }
+.matches { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+.matches li { padding: 4px 0; border-top: 1px dashed var(--line); display: flex; gap: 10px; flex-wrap: wrap; }
+.matches .when { color: var(--muted); min-width: 120px; }
+.matches .cal { color: var(--muted); margin-left: auto; }
+.copies { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; background: rgba(0,0,0,.15); margin-left: 4px; white-space: nowrap; }

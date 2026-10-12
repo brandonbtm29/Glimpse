@@ -56,6 +56,31 @@ overrides:
   private_tag: "#private"
   hide_tag: "#hide"
   honor_private_flag: true
+  merge_duplicates: true   # show an event once if it's on several calendars
+
+# ---------------------------------------------------------------------------
+# Groups (optional): set one level for several calendars at once, per audience.
+# A calendar can be in at most one group. Precedence for an audience:
+#   calendar setting  >  group setting  >  default
+# ---------------------------------------------------------------------------
+groups:
+  work:
+    name: Work
+    calendars: [lab, classes]
+
+# ---------------------------------------------------------------------------
+# Privacy rules (optional): matching events are shown as Busy (or hidden) to
+# EVERY audience. Keywords match whole words, ignoring capitals and accents.
+#   fields     where to look: title, notes, location (default: all three)
+#   action     busy (default) or hidden
+#   calendars  only apply to these calendars (default: all)
+# ---------------------------------------------------------------------------
+rules:
+  - name: Health
+    match: [doctor, dentist, therapy]
+  - name: Job hunt
+    match: [interview]
+    action: hidden
 
 # ---------------------------------------------------------------------------
 # Audiences: who sees what. Levels, most to least revealing:
@@ -64,7 +89,7 @@ overrides:
 #   label   the calendar's label (e.g. "Class") and time
 #   busy    an anonymous "Busy" block
 #   hidden  nothing
-# `default` applies to any calendar not listed under `calendars`.
+# `default` applies to any calendar not listed under `calendars` or `groups`.
 # ---------------------------------------------------------------------------
 audiences:
   partner:
@@ -82,6 +107,8 @@ audiences:
     slug: ${COWORKER_SLUG}
     password_hash: null                 # link only
     default: busy
+    groups:
+      work: title                       # every Work calendar at `title`...
     weeks_ahead: 3
     weeks_behind: 0
     hours: { days: [mon, tue, wed, thu, fri], start: "08:00", end: "18:00" }
@@ -89,6 +116,5 @@ audiences:
     allow_excel: true
     allow_ics: true                     # lets them subscribe in their own calendar app
     calendars:
-      lab: title
-      classes: label
+      classes: label                    # ...except Classes, which shows only "Class"
       family: hidden

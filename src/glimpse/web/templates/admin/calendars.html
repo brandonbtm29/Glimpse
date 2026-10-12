@@ -1,5 +1,46 @@
 {% extends "admin/base.html" %}
-{% block title %}Calendars · Glimpse settings{% endblock %}
+{% block title %}Calendars · Glimpse settings
+{% if feeds %}
+<section class="panel" id="groups">
+  <h2>Groups</h2>
+  <p class="muted">Put related calendars together, e.g. &ldquo;Work&rdquo; for your university and lab calendars, then choose one level for the whole group on <a href="/sharing">Who sees what</a>. A calendar can be in one group.</p>
+  {% for gid, grp in cfg.groups.items() %}
+  <form method="post" action="/groups/{{ gid }}" class="form group-edit">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name
+      <input type="text" name="name" value="{{ grp.name }}" maxlength="60" required>
+    </label>
+    <fieldset class="checks">
+      <legend>Calendars</legend>
+      {% for f in feeds %}
+      {% set elsewhere = f.group and f.group != gid %}
+      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}" {% if f.group == gid %}checked{% endif %}>
+        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if elsewhere %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="actions">
+      <button type="submit" class="secondary">Save group</button>
+      <button type="submit" formaction="/groups/{{ gid }}/delete" class="link danger" data-confirm="Remove the group {{ grp.name }}? Its calendars stay.">Remove group</button>
+    </div>
+  </form>
+  {% endfor %}
+  <form method="post" action="/groups/add" class="form group-edit new">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>New group
+      <input type="text" name="name" placeholder="Work" maxlength="60" required>
+    </label>
+    <fieldset class="checks">
+      <legend>Calendars</legend>
+      {% for f in feeds %}
+      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}">
+        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if f.group %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="actions"><button type="submit">Create group</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}
 {% block content %}
 <header class="pagehead">
   <div>
@@ -11,11 +52,12 @@
 {% if feeds %}
 <section class="panel">
   <table class="table">
-    <thead><tr><th>Name</th><th>Label</th><th>Link</th><th>Status</th><th class="num">This week</th><th></th></tr></thead>
+    <thead><tr><th>Name</th>{% if cfg.groups %}<th>Group</th>{% endif %}<th>Label</th><th>Link</th><th>Status</th><th class="num">This week</th><th></th></tr></thead>
     <tbody>
     {% for f in feeds %}
       <tr>
         <td><span class="dot" style="--ev: {{ f.color }}"></span><strong>{{ f.cal.name }}</strong></td>
+        {% if cfg.groups %}<td class="muted">{{ cfg.groups[f.group].name if f.group else '–' }}</td>{% endif %}
         <td class="muted">{{ f.cal.label or '–' }}</td>
         <td class="mono muted">{{ f.provider }} · {{ f.masked }}</td>
         <td>{% if f.status == 'ok' %}<span class="status ok">OK</span>{% elif f.status == 'error' %}<span class="status bad" title="{{ f.error }}">Problem</span>{% else %}<span class="status wait">Waiting</span>{% endif %}</td>
@@ -66,10 +108,59 @@
     <label>Colour
       <input type="color" name="color" value="{{ form.color }}">
     </label>
+    {% if cfg.groups %}
+    <label>Group
+      <select name="group">
+        <option value="">No group</option>
+        {% for gid, grp in cfg.groups.items() %}<option value="{{ gid }}" {% if form.group == gid %}selected{% endif %}>{{ grp.name }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
     <div class="actions span2">
       <button type="submit" formaction="/calendars/test" class="secondary">Test link</button>
       <button type="submit">Add calendar</button>
     </div>
   </form>
 </section>
+
+{% if feeds %}
+<section class="panel" id="groups">
+  <h2>Groups</h2>
+  <p class="muted">Put related calendars together, e.g. &ldquo;Work&rdquo; for your university and lab calendars, then choose one level for the whole group on <a href="/sharing">Who sees what</a>. A calendar can be in one group.</p>
+  {% for gid, grp in cfg.groups.items() %}
+  <form method="post" action="/groups/{{ gid }}" class="form group-edit">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name
+      <input type="text" name="name" value="{{ grp.name }}" maxlength="60" required>
+    </label>
+    <fieldset class="checks">
+      <legend>Calendars</legend>
+      {% for f in feeds %}
+      {% set elsewhere = f.group and f.group != gid %}
+      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}" {% if f.group == gid %}checked{% endif %}>
+        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if elsewhere %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="actions">
+      <button type="submit" class="secondary">Save group</button>
+      <button type="submit" formaction="/groups/{{ gid }}/delete" class="link danger" data-confirm="Remove the group {{ grp.name }}? Its calendars stay.">Remove group</button>
+    </div>
+  </form>
+  {% endfor %}
+  <form method="post" action="/groups/add" class="form group-edit new">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>New group
+      <input type="text" name="name" placeholder="Work" maxlength="60" required>
+    </label>
+    <fieldset class="checks">
+      <legend>Calendars</legend>
+      {% for f in feeds %}
+      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}">
+        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if f.group %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="actions"><button type="submit">Create group</button></div>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

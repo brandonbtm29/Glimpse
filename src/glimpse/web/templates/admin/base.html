@@ -23,6 +23,7 @@
       <a href="/" {% if nav == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a href="/calendars" {% if nav in ('calendars', 'calendar_edit') %}aria-current="page"{% endif %}>Calendars</a>
       <a href="/sharing" {% if nav in ('sharing', 'audience') %}aria-current="page"{% endif %}>Who sees what</a>
+      <a href="/rules" {% if nav == 'rules' %}aria-current="page"{% endif %}>Privacy rules</a>
       <a href="/preview" {% if nav == 'preview' %}aria-current="page"{% endif %}>Preview</a>
       <a href="/settings" {% if nav == 'settings' %}aria-current="page"{% endif %}>Settings</a>
       <a href="/setup" {% if nav == 'setup' %}aria-current="page"{% endif %}>Setup</a>

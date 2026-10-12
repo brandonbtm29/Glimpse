@@ -114,6 +114,54 @@ class OverridesCfg(_Strict):
     private_tag: str = "#private"  # in an event's title/notes -> at most `busy`
     hide_tag: str = "#hide"  # -> hidden from every audience
     honor_private_flag: bool = True  # events marked Private in Outlook/Google -> at most `busy`
+    merge_duplicates: bool = True  # the same event on several calendars is shown once
+
+
+class GroupCfg(_Strict):
+    """A set of calendars that share one level per audience (e.g. "Work")."""
+
+    name: str
+    calendars: list[str] = Field(default_factory=list)
+
+
+RuleField = Literal["title", "notes", "location"]
+
+
+class RuleCfg(_Strict):
+    """A keyword rule: matching events are shown as Busy (or hidden) to everyone.
+
+    Rules only ever reduce detail. Keywords match whole words, ignoring case and accents.
+    """
+
+    name: str | None = None
+    match: list[str]
+    fields: list[RuleField] = Field(default_factory=lambda: ["title", "notes", "location"])
+    action: Literal["busy", "hidden"] = "busy"
+    calendars: list[str] = Field(default_factory=list)  # empty = every calendar
+    enabled: bool = True
+
+    @field_validator("match")
+    @classmethod
+    def _match(cls, v: list[str]) -> list[str]:
+        words = [w.strip() for w in v if w and w.strip()]
+        if not words:
+            raise ValueError("a rule needs at least one keyword")
+        return words
+
+    @field_validator("fields")
+    @classmethod
+    def _fields(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("a rule must look in at least one of title, notes, location")
+        return v
+
+    @property
+    def level(self) -> Level:
+        return Level.HIDDEN if self.action == "hidden" else Level.BUSY
+
+    @property
+    def display_name(self) -> str:
+        return self.name or ", ".join(self.match)
 
 
 class AudienceCfg(_Strict):
@@ -121,7 +169,8 @@ class AudienceCfg(_Strict):
     slug: str
     password_hash: str | None = None
     default: Level = Level.BUSY
-    calendars: dict[str, Level] = Field(default_factory=dict)
+    calendars: dict[str, Level] = Field(default_factory=dict)  # per-calendar overrides
+    groups: dict[str, Level] = Field(default_factory=dict)  # per-group levels
     hours: HoursCfg | None = None
     weeks_ahead: int = Field(default=4, ge=0, le=52)
     weeks_behind: int = Field(default=1, ge=0, le=52)
@@ -199,6 +248,8 @@ class AppConfig(_Strict):
     admin: AdminCfg = Field(default_factory=AdminCfg)
     overrides: OverridesCfg = Field(default_factory=OverridesCfg)
     calendars: dict[str, CalendarCfg] = Field(default_factory=dict)
+    groups: dict[str, GroupCfg] = Field(default_factory=dict)
+    rules: list[RuleCfg] = Field(default_factory=list)
     audiences: dict[str, AudienceCfg] = Field(default_factory=dict)
 
     @field_validator("timezone")
@@ -212,6 +263,18 @@ class AppConfig(_Strict):
 
     @model_validator(mode="after")
     def _cross_refs(self) -> AppConfig:
+        member_of: dict[str, str] = {}
+        for gid, grp in self.groups.items():
+            for cid in grp.calendars:
+                if cid not in self.calendars:
+                    raise ValueError(f"group {gid!r} lists calendar {cid!r}, which is not defined")
+                if cid in member_of:
+                    raise ValueError(f"calendar {cid!r} is in two groups ({member_of[cid]!r} and {gid!r})")
+                member_of[cid] = gid
+        for i, rule in enumerate(self.rules, 1):
+            for cid in rule.calendars:
+                if cid not in self.calendars:
+                    raise ValueError(f"rule {i} refers to calendar {cid!r}, which is not defined")
         slugs: dict[str, str] = {}
         for aid, aud in self.audiences.items():
             for cid in aud.calendars:
@@ -220,6 +283,9 @@ class AppConfig(_Strict):
                         f"audience {aid!r} refers to calendar {cid!r}, which is not defined "
                         f"(known: {', '.join(self.calendars)})"
                     )
+            for gid in aud.groups:
+                if gid not in self.groups:
+                    raise ValueError(f"audience {aid!r} refers to group {gid!r}, which is not defined")
             if aud.slug in slugs:
                 raise ValueError(f"audiences {slugs[aud.slug]!r} and {aid!r} share the same slug")
             slugs[aud.slug] = aid
@@ -229,8 +295,27 @@ class AppConfig(_Strict):
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
 
+    def group_of(self, calendar_id: str) -> str | None:
+        for gid, grp in self.groups.items():
+            if calendar_id in grp.calendars:
+                return gid
+        return None
+
     def level_for(self, audience: AudienceCfg, calendar_id: str) -> Level:
-        return audience.calendars.get(calendar_id, audience.default)
+        """Calendar override, else its group's level, else the audience default."""
+        if calendar_id in audience.calendars:
+            return audience.calendars[calendar_id]
+        gid = self.group_of(calendar_id)
+        if gid is not None and gid in audience.groups:
+            return audience.groups[gid]
+        return audience.default
+
+    def level_source(self, audience: AudienceCfg, calendar_id: str) -> str:
+        """Where a calendar's level comes from: 'calendar', 'group' or 'default'."""
+        if calendar_id in audience.calendars:
+            return "calendar"
+        gid = self.group_of(calendar_id)
+        return "group" if gid is not None and gid in audience.groups else "default"
 
 
 def _substitute(node: Any, env: dict[str, str], missing: set[str]) -> Any:
