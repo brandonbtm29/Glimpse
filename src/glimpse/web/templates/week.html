@@ -3,25 +3,8 @@
 
 {% block body %}
 <main class="page">
-  <header class="top">
-    <div class="heading">
-      <h1>{{ view.title }}</h1>
-      <p class="range">{{ view.range_label }}</p>
-    </div>
-    <nav class="weeknav" aria-label="Week">
-      {% if prev %}<a class="btn" href="/a/{{ slug }}/week/{{ prev }}" aria-label="Previous week">&#8249;</a>{% else %}<span class="btn disabled" aria-hidden="true">&#8249;</span>{% endif %}
-      {% if is_this_week %}<span class="btn current">This week</span>{% else %}<a class="btn" href="/a/{{ slug }}/week/{{ this_week }}">This week</a>{% endif %}
-      {% if next %}<a class="btn" href="/a/{{ slug }}/week/{{ next }}" aria-label="Next week">&#8250;</a>{% else %}<span class="btn disabled" aria-hidden="true">&#8250;</span>{% endif %}
-    </nav>
-  </header>
-
+  {% include "_top.html" %}
   {% include "_week.html" %}
-
-  <footer class="foot">
-    {% if freshness %}<span>{{ freshness }}</span>{% endif %}
-    {% if excel %}<a href="/a/{{ slug }}/excel/{{ view.start.isoformat() }}">Download as Excel</a>{% endif %}
-    {% if ics_url %}<a href="{{ ics_url }}" title="Copy this link and add it in your calendar app as a subscription">Subscribe in your calendar app</a>{% endif %}
-    {% if has_password %}<a href="/a/{{ slug }}/logout">Sign out</a>{% endif %}
-  </footer>
+  {% include "_foot.html" %}
 </main>
 {% endblock %}

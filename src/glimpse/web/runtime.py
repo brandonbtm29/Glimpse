@@ -11,6 +11,7 @@ from ..config import AppConfig, ConfigError
 from ..core import Glimpse
 from ..sources import USER_AGENT
 from ..store import ConfigStore
+from .state import SeenStore
 
 log = logging.getLogger("glimpse.runtime")
 
@@ -19,6 +20,7 @@ class Runtime:
     def __init__(self, cfg: AppConfig, store: ConfigStore | None = None, glimpse: Glimpse | None = None):
         self.glimpse = glimpse or Glimpse(cfg)
         self.store = store
+        self.seen = SeenStore(store.config_path.parent / "state.json" if store else None)
         self.reload_error: str | None = None
         self._stamp = self._file_stamp()
 

@@ -10,6 +10,7 @@ Every command here is fixed; nothing a user types is ever passed to the CLI.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -196,3 +197,86 @@ def publish_public(public_port: int = 8000) -> Result:
 
 def unpublish_public() -> Result:
     return _run(["funnel", f"--https={PUBLIC_HTTPS_PORT}", "off"])
+
+
+# --- is the public link reachable from the internet? -----------------------------------------
+
+_DOH = [
+    "https://cloudflare-dns.com/dns-query?name={host}&type=A",
+    "https://dns.google/resolve?name={host}&type=A",
+]
+_TAILNET_NET = ipaddress.ip_network("100.64.0.0/10")
+
+
+@dataclass
+class PublicCheck:
+    ok: bool
+    summary: str
+    detail: str = ""
+    addresses: list[str] = field(default_factory=list)
+
+
+def public_dns(host: str, timeout: float = 8) -> list[str] | None:
+    """A records for ``host`` as the internet sees them (DNS over HTTPS, so not this PC's Tailscale DNS)."""
+    import httpx
+
+    for url in _DOH:
+        try:
+            r = httpx.get(url.format(host=host), headers={"accept": "application/dns-json"}, timeout=timeout)
+            r.raise_for_status()
+            data = r.json()
+        except (httpx.HTTPError, ValueError):
+            continue
+        return [a["data"] for a in data.get("Answer") or [] if a.get("type") == 1 and a.get("data")]
+    return None
+
+
+def check_public(host: str, timeout: float = 12) -> PublicCheck:
+    """Fetch /healthz the way an outside visitor would: public DNS, then Tailscale's Funnel relay."""
+    import httpx
+
+    if not host:
+        return PublicCheck(False, "Tailscale hasn't given this computer a name yet.")
+    addrs = public_dns(host)
+    if addrs is None:
+        return PublicCheck(False, "Couldn't reach a public DNS service to check.", "Is this computer online?")
+    if not addrs:
+        return PublicCheck(
+            False,
+            "The internet doesn't know this address yet.",
+            "Turn on public share links above. Right after turning them on, it can take a few minutes.",
+        )
+    public = [a for a in addrs if ipaddress.ip_address(a) not in _TAILNET_NET]
+    if not public:
+        return PublicCheck(
+            False,
+            "Public DNS points at your private Tailscale address, so only your own devices can open links.",
+            "Turn public share links off and on again above, then wait a few minutes.",
+            addrs,
+        )
+    last_error = ""
+    for ip in public:
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.get(
+                    f"https://{ip}/healthz", headers={"Host": host}, extensions={"sni_hostname": host}
+                )
+        except httpx.HTTPError as exc:
+            last_error = f"{type(exc).__name__}: {exc}"[:300]
+            continue
+        if r.status_code == 200 and '"ok"' in r.text:
+            return PublicCheck(
+                True,
+                "Share links work from the internet.",
+                "If one doesn't open on your own laptop with Tailscale switched off, your laptop is "
+                "still remembering the private address: try a phone on mobile data, or clear the "
+                "browser's DNS cache.",
+                public,
+            )
+        last_error = f"Got HTTP {r.status_code} instead of Glimpse."
+    return PublicCheck(
+        False,
+        "The internet can find this computer but couldn't open Glimpse.",
+        last_error or "Check that Glimpse is running and public share links are on.",
+        public,
+    )

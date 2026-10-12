@@ -11,7 +11,8 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from ..config import AppConfig
-from .week import WeekView, fmt_time
+from .periods import MonthView, fmt_hours
+from .week import WeekView, fmt_day, fmt_time
 
 # Light tints that work as cell fills; index matches the CSS palette c0..c7.
 PALETTE = ["DCE8FB", "DDF3E4", "FCE7D6", "EDE3FA", "FBE0E6", "D9F2F2", "F6EFCF", "E6E9EE"]
@@ -33,7 +34,7 @@ def _fill_for(cls: str, custom: str | None) -> str:
 
 
 def week_to_xlsx(cfg: AppConfig, week: WeekView) -> bytes:
-    tz = cfg.tz
+    tz = week.tz or cfg.tz
     wb = Workbook()
     ws = wb.active
     ws.title = "Week"
@@ -130,6 +131,91 @@ def week_to_xlsx(cfg: AppConfig, week: WeekView) -> bytes:
     for c, w in zip(range(1, 8), [14, 10, 10, 34, 16, 24, 40], strict=True):
         lst.column_dimensions[get_column_letter(c)].width = w
     lst.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def month_to_xlsx(cfg: AppConfig, month: MonthView) -> bytes:
+    """A month grid (one cell per day, every item listed) plus a plain event list."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Month"
+    thin = Side(style="thin", color="D0D4DA")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    wrap = Alignment(wrap_text=True, vertical="top")
+    bold = Font(bold=True)
+    muted = Font(color="8A93A3")
+
+    ws["A1"] = f"{month.title} — {month.label}"
+    ws["A1"].font = Font(bold=True, size=13)
+    for i, name in enumerate(month.dows):
+        c = ws.cell(3, i + 1, name)
+        c.font = bold
+        c.alignment = Alignment(horizontal="center")
+        ws.column_dimensions[get_column_letter(i + 1)].width = 26
+
+    row = 4
+    for week in month.weeks:
+        lines_max = 1
+        for i, cell in enumerate(week):
+            lines = [str(cell.day.day)]
+            for chip in cell.chips:
+                lines.append(f"{chip.when + ' ' if chip.when else ''}{chip.ev.title}")
+            if not cell.in_range and cell.in_month:
+                lines.append("(not shared)")
+            c = ws.cell(row, i + 1, "\n".join(lines))
+            c.alignment = wrap
+            c.border = grid
+            if not cell.in_month:
+                c.font = muted
+            elif cell.chips:
+                first = cell.chips[0]
+                c.fill = PatternFill("solid", fgColor=_fill_for(first.color_class, first.color))
+            lines_max = max(lines_max, len(lines))
+        ws.row_dimensions[row].height = max(48, 15 * lines_max)
+        row += 1
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    lst = wb.create_sheet("Events")
+    headers = ["Date", "Start", "End", "Title", "Calendar", "Location", "Notes"]
+    for c, h in enumerate(headers, 1):
+        lst.cell(1, c, h).font = bold
+    r = 2
+    for week in month.weeks:
+        for cell in week:
+            if not cell.in_month:
+                continue
+            for chip in cell.chips:
+                ev = chip.ev
+                lst.cell(r, 1, fmt_day(cell.day))
+                lst.cell(r, 2, "all day" if ev.all_day else fmt_time(ev.start.astimezone(month.tz)))
+                lst.cell(r, 3, "" if ev.all_day else fmt_time(ev.end.astimezone(month.tz)))
+                lst.cell(r, 4, ev.title)
+                lst.cell(r, 5, ev.calendar_name or "")
+                lst.cell(r, 6, ev.location)
+                lst.cell(r, 7, ev.notes)
+                r += 1
+    for c, w in zip(range(1, 8), [14, 10, 10, 34, 16, 24, 40], strict=True):
+        lst.column_dimensions[get_column_letter(c)].width = w
+    lst.freeze_panes = "A2"
+
+    summary = wb.create_sheet("Busy hours")
+    summary.cell(1, 1, "Date").font = bold
+    summary.cell(1, 2, "Busy").font = bold
+    r = 2
+    for week in month.weeks:
+        for cell in week:
+            if cell.in_month and cell.in_range:
+                summary.cell(r, 1, fmt_day(cell.day))
+                summary.cell(r, 2, fmt_hours(cell.minutes))
+                r += 1
+    summary.column_dimensions["A"].width = 14
+    summary.column_dimensions["B"].width = 18
 
     buf = io.BytesIO()
     wb.save(buf)

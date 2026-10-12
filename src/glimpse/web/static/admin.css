@@ -242,3 +242,10 @@ button.link.danger { color: #c93a5c; background: none; }
 .matches .when { color: var(--muted); min-width: 120px; }
 .matches .cal { color: var(--muted); margin-left: auto; }
 .copies { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 999px; background: rgba(0,0,0,.15); margin-left: 4px; white-space: nowrap; }
+
+/* People */
+.table .nowrap { white-space: nowrap; }
+.table .nowrap > * + * { margin-left: 6px; }
+.table.compact td { padding-top: 6px; padding-bottom: 6px; }
+.form input[type=date] { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); }
+.check-result { margin-top: 10px; }

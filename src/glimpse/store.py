@@ -213,11 +213,51 @@ class Draft:
         return aid
 
     def remove_audience(self, aid: str) -> None:
+        """Delete an audience and the people in it (their links stop working too)."""
         node = self.audiences.pop(aid, None)
         if node is None:
             return
         self.drop_secret(node, "slug")
         self.drop_secret(node, "password_hash")
+        for pid, person in list((self.raw.get("people") or {}).items()):
+            if isinstance(person, dict) and person.get("audience") == aid:
+                self.remove_person(pid)
+
+    # -- people --------------------------------------------------------------
+
+    @property
+    def people(self) -> dict[str, Any]:
+        return self.section("people")
+
+    def add_person(self, name: str, audience: str, expires: str | None = None) -> str:
+        pid = make_id(name, self.people)
+        node: dict[str, Any] = {"name": name.strip(), "audience": audience}
+        self.people[pid] = node
+        self.set_secret(node, "slug", new_slug(), _env_name("PERSON", pid, "SLUG"))
+        if expires:
+            node["expires"] = expires
+        return pid
+
+    def remove_person(self, pid: str) -> None:
+        node = self.people.pop(pid, None)
+        if node is None:
+            return
+        self.drop_secret(node, "slug")
+        self.drop_secret(node, "password_hash")
+        if not self.people:
+            self.raw.pop("people", None)
+
+    def rotate_person_slug(self, pid: str) -> None:
+        node = self.people[pid]
+        self.set_secret(node, "slug", new_slug(), _env_name("PERSON", pid, "SLUG"))
+
+    def set_person_password(self, pid: str, password_hash: str | None) -> None:
+        node = self.people[pid]
+        if password_hash is None:
+            self.drop_secret(node, "password_hash")
+            node.pop("password_hash", None)
+        else:
+            self.set_secret(node, "password_hash", password_hash, _env_name("PERSON", pid, "PASSWORD_HASH"))
 
     def rotate_slug(self, aid: str) -> None:
         node = self.audiences[aid]

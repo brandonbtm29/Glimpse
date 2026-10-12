@@ -1,0 +1,26 @@
+{# Footer shared by every schedule view: time zone, downloads, sign out. #}
+<footer class="foot">
+  <div class="zone" id="zone" data-current="{{ tz.key }}">
+    <span>Times in <b>{{ tz_label }}</b>{% if is_owner_zone %} ({{ owner_label }}){% endif %}.</span>
+    {% if not is_owner_zone %}<a href="{{ here }}?tz=owner">Show {{ owner_label }} ({{ owner_zone_label }})</a>{% endif %}
+    <a href="#" class="yourzone" hidden data-here="{{ here }}">Show your time</a>
+    <details class="zonepick">
+      <summary>Change time zone</summary>
+      <form method="get" action="{{ here }}">
+        <label>Time zone
+          <select name="tz">
+            {% for z in zones %}<option value="{{ z }}" {% if z == tz.key %}selected{% endif %}>{{ z.replace('_', ' ') }}</option>{% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="small">Show</button>
+      </form>
+    </details>
+  </div>
+  <div class="links">
+    {% if freshness %}<span>{{ freshness }}</span>{% endif %}
+    {% if excel_url %}<a href="{{ excel_url }}">Download as Excel</a>{% endif %}
+    {% if ics_url %}<a href="{{ ics_url }}" title="Copy this link and add it in your calendar app as a subscription">Subscribe in your calendar app</a>{% endif %}
+    {% if has_password %}<a href="{{ base }}/logout">Sign out</a>{% endif %}
+  </div>
+</footer>
+<script src="/static/viewer.js?v={{ version }}" defer></script>

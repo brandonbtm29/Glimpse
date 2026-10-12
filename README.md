@@ -30,7 +30,10 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **Keyword privacy rules**: "anything mentioning *doctor* or *therapy* is Busy for everyone", or "hide anything with *interview*". Whole-word, case- and accent-insensitive, optionally limited to some calendars, with a preview of which upcoming events a rule catches.
 - **Duplicate merging**: a meeting that's on two of your calendars (say, invited on work and copied to personal) shows once. If any copy is private or caught by a rule, that wins.
 - **Optional passwords** per audience (Argon2-hashed, rate-limited, 30-day sign-in), and one-click "new link" to cut off access.
-- **Excel download** of any visible week, and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
+- **People with their own links**: put someone in an audience with a personal link. Move them between audiences, give the link an end date, see when they last looked, or cut off just them. Switch an audience's shared link off once everyone has their own.
+- **Week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
+- **Time zones**: viewers see your schedule in their own time (detected, or picked from a list), with your time a click away. Hour limits always stay on your clock.
+- **Excel download** of any visible week or month, and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
 - Recurring events, moved/cancelled instances, all-day and overnight events, and daylight-saving changes all handled.
 - **One double-click install** on Windows and macOS, then a guided setup in the browser. No administrator rights needed.
 - Runs on Windows, macOS or Linux. One Python process, no database, no tracking.
@@ -142,6 +145,10 @@ If a link ever leaks, reset it at the source: Google has a **Reset** button, Out
 ### Sharing and revoking
 
 Send the link and the password through different channels (e.g. link by email, password by text). To cut someone off, open their audience and press **Make a new link** (and change the password). The old link and every existing sign-in stop working at once.
+
+With **People**, each person gets their own link instead, so cutting off one person (or letting their link expire on a date) leaves everyone else's link alone. "Last viewed" times are kept in `state.json` beside your config, never in `config.yaml`.
+
+**Testing a link from outside:** on the Setup page, **Test from the internet** checks your share links the way someone without Tailscale opens them. If a link works there but not on your own laptop with Tailscale switched off, your laptop is still remembering the private Tailscale address: try a phone on mobile data, or clear the browser's DNS cache.
 
 ## Detail levels
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from .config import AppConfig, AudienceCfg
 from .events import Event, collect_events
@@ -16,11 +17,25 @@ def week_start(day: date, cfg: AppConfig) -> date:
     return day - timedelta(days=offset)
 
 
-def week_range(start: date, cfg: AppConfig) -> tuple[datetime, datetime]:
-    tz = cfg.tz
-    s = datetime.combine(start, time.min, tzinfo=tz)
-    e = datetime.combine(start + timedelta(days=7), time.min, tzinfo=tz)
-    return s, e
+def week_range(start: date, cfg: AppConfig, tz: ZoneInfo | None = None) -> tuple[datetime, datetime]:
+    return day_range(start, start + timedelta(days=7), tz or cfg.tz)
+
+
+def day_range(first: date, end_exclusive: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    return datetime.combine(first, time.min, tzinfo=tz), datetime.combine(end_exclusive, time.min, tzinfo=tz)
+
+
+def add_months(d: date, n: int) -> date:
+    m = d.month - 1 + n
+    return date(d.year + m // 12, m % 12 + 1, 1)
+
+
+def period_bounds(view: str, day: date) -> tuple[date, date]:
+    """First day and the day after the last, for a month, quarter (3 months from that month) or year."""
+    if view == "year":
+        return date(day.year, 1, 1), date(day.year + 1, 1, 1)
+    first = date(day.year, day.month, 1)
+    return first, add_months(first, 3 if view == "quarter" else 1)
 
 
 def allowed_week_bounds(audience: AudienceCfg, today: date, cfg: AppConfig) -> tuple[date, date]:
@@ -65,6 +80,11 @@ class Glimpse:
     def today(self) -> date:
         return datetime.now(self.cfg.tz).date()
 
+    def today_in(self, tz: ZoneInfo) -> date:
+        """Today's date in ``tz`` (consistent with :meth:`today`, which tests may pin)."""
+        shift = datetime.now(tz).date() - datetime.now(self.cfg.tz).date()
+        return self.today() + shift
+
     def audience_by_slug(self, slug: str) -> tuple[str, AudienceCfg] | None:
         import hmac
 
@@ -86,9 +106,20 @@ class Glimpse:
             self._events.popitem(last=False)
         return evs
 
-    def view(self, audience: AudienceCfg, start: datetime, end: datetime) -> list[VisibleEvent]:
-        return visible_events(self.cfg, audience, self.events_between(start, end), start, end)
+    def view(
+        self, audience: AudienceCfg, start: datetime, end: datetime, tz: ZoneInfo | None = None
+    ) -> list[VisibleEvent]:
+        if tz is None or tz.key == self.cfg.timezone:
+            return visible_events(self.cfg, audience, self.events_between(start, end), start, end)
+        # Another zone's days don't line up with ours: fetch a day either side, then clip.
+        pad = timedelta(days=1)
+        own = self.cfg.tz
+        events = self.events_between(
+            datetime.combine((start - pad).astimezone(own).date(), time.min, tzinfo=own),
+            datetime.combine((end + pad).astimezone(own).date(), time.min, tzinfo=own),
+        )
+        return visible_events(self.cfg, audience, events, start, end, tz)
 
-    def week(self, audience: AudienceCfg, start_day: date) -> list[VisibleEvent]:
-        s, e = week_range(start_day, self.cfg)
-        return self.view(audience, s, e)
+    def week(self, audience: AudienceCfg, start_day: date, tz: ZoneInfo | None = None) -> list[VisibleEvent]:
+        s, e = week_range(start_day, self.cfg, tz)
+        return self.view(audience, s, e, tz)

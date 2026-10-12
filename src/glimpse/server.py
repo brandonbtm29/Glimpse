@@ -54,7 +54,7 @@ def run(
     servers = [
         uvicorn.Server(
             uvicorn.Config(
-                create_app(cfg, glimpse=rt.glimpse, background_refresh=False),
+                create_app(cfg, glimpse=rt.glimpse, background_refresh=False, seen=rt.seen),
                 host=host,
                 port=port,
                 proxy_headers=cfg.server.trust_proxy_headers,
@@ -84,6 +84,7 @@ def run(
             await asyncio.gather(*(s.serve() for s in servers))
         finally:
             refresher.cancel()
+            rt.seen.flush()
 
     asyncio.run(main())
     if any(not s.started for s in servers):

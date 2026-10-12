@@ -1,0 +1,21 @@
+{# Page header shared by every schedule view: title, period, view switcher, prev/next. #}
+<header class="top">
+  <div class="heading">
+    <h1>{{ aud.title }}</h1>
+    <p class="range">{{ range_label }}{% if person %} <span class="for">· for {{ person }}</span>{% endif %}</p>
+  </div>
+  <div class="controls">
+    {% if views | length > 1 %}
+    <nav class="views" aria-label="View">
+      {% for name, label in views %}
+      {% if name == current_view %}<span class="tab current" aria-current="page">{{ label }}</span>{% else %}<a class="tab" href="{{ base }}/{{ name }}/{{ today }}">{{ label }}</a>{% endif %}
+      {% endfor %}
+    </nav>
+    {% endif %}
+    <nav class="weeknav" aria-label="Previous and next">
+      {% if prev %}<a class="btn" href="{{ prev }}" aria-label="Previous">&#8249;</a>{% else %}<span class="btn disabled" aria-hidden="true">&#8249;</span>{% endif %}
+      {% if now_link %}<a class="btn" href="{{ now_link }}">{{ now_label }}</a>{% else %}<span class="btn current">{{ now_label }}</span>{% endif %}
+      {% if next %}<a class="btn" href="{{ next }}" aria-label="Next">&#8250;</a>{% else %}<span class="btn disabled" aria-hidden="true">&#8250;</span>{% endif %}
+    </nav>
+  </div>
+</header>

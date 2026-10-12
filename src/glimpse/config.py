@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import os
 import re
-from datetime import time
+from datetime import date, time
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
@@ -164,6 +164,41 @@ class RuleCfg(_Strict):
         return self.name or ", ".join(self.match)
 
 
+ViewName = Literal["week", "month", "quarter", "year"]
+VIEW_ORDER: list[str] = ["week", "month", "quarter", "year"]
+
+
+def _check_slug(v: str) -> str:
+    if len(v) < 16 or not re.fullmatch(r"[A-Za-z0-9_-]+", v):
+        raise ValueError(
+            "slug must be at least 16 characters of letters, digits, - or _ "
+            "(run `glimpse new-slug` to make one)"
+        )
+    return v
+
+
+def _check_hash(v: str | None) -> str | None:
+    if v is None or v.strip().lower() in ("null", "none"):
+        return None
+    if not v.strip():
+        # An empty value usually means a forgotten .env entry. Failing loudly beats
+        # silently turning a password-protected page into a link-only one.
+        raise ValueError("password_hash is empty; set it with `glimpse hash-password` or use null")
+    if not v.startswith("$argon2"):
+        raise ValueError("password_hash must be an Argon2 hash (run `glimpse hash-password`)")
+    return v
+
+
+def _check_zone(v: str | None) -> str | None:
+    if v is None or not v.strip():
+        return None
+    try:
+        ZoneInfo(v)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError(f"unknown time zone {v!r}") from exc
+    return v
+
+
 class AudienceCfg(_Strict):
     title: str = "Schedule"
     slug: str
@@ -177,29 +212,65 @@ class AudienceCfg(_Strict):
     show_all_day_busy: bool = False  # all-day events at `busy` level are usually reminders
     allow_excel: bool = True
     allow_ics: bool = True
+    shared_link: bool = True  # False: only people's own links work (see `people`)
+    timezone: str | None = None  # zone viewers see by default; None = yours
+    views: list[ViewName] = Field(default_factory=lambda: ["week"])
+    default_view: ViewName = "week"
 
     @field_validator("slug")
     @classmethod
     def _slug(cls, v: str) -> str:
-        if len(v) < 16 or not re.fullmatch(r"[A-Za-z0-9_-]+", v):
-            raise ValueError(
-                "slug must be at least 16 characters of letters, digits, - or _ "
-                "(run `glimpse new-slug` to make one)"
-            )
-        return v
+        return _check_slug(v)
 
     @field_validator("password_hash")
     @classmethod
     def _hash(cls, v: str | None) -> str | None:
-        if v is None or v.strip().lower() in ("null", "none"):
-            return None
-        if not v.strip():
-            # An empty value usually means a forgotten .env entry. Failing loudly beats
-            # silently turning a password-protected page into a link-only one.
-            raise ValueError("password_hash is empty; set it with `glimpse hash-password` or use null")
-        if not v.startswith("$argon2"):
-            raise ValueError("password_hash must be an Argon2 hash (run `glimpse hash-password`)")
-        return v
+        return _check_hash(v)
+
+    @field_validator("timezone")
+    @classmethod
+    def _zone(cls, v: str | None) -> str | None:
+        return _check_zone(v)
+
+    @field_validator("views")
+    @classmethod
+    def _views(cls, v: list[str]) -> list[str]:
+        seen = [x for x in VIEW_ORDER if x in v]
+        if not seen:
+            raise ValueError("an audience needs at least one view (week, month, quarter or year)")
+        return seen
+
+    @model_validator(mode="after")
+    def _default_view_allowed(self) -> AudienceCfg:
+        if self.default_view not in self.views:
+            self.default_view = self.views[0]
+        return self
+
+
+class PersonCfg(_Strict):
+    """Someone with their own link into an audience. Moving them changes what their link shows."""
+
+    name: str
+    audience: str
+    slug: str
+    password_hash: str | None = None  # their own password; overrides the audience's
+    use_audience_password: bool = True  # with no own password: ask for the audience's (if it has one)
+    expires: date | None = None  # last day the link works
+    enabled: bool = True
+    note: str | None = None
+
+    @field_validator("slug")
+    @classmethod
+    def _slug(cls, v: str) -> str:
+        return _check_slug(v)
+
+    @field_validator("password_hash")
+    @classmethod
+    def _hash(cls, v: str | None) -> str | None:
+        return _check_hash(v)
+
+    def expired(self, today: date) -> bool:
+        return not self.enabled or (self.expires is not None and today > self.expires)
 
 
 class ServerCfg(_Strict):
@@ -251,6 +322,8 @@ class AppConfig(_Strict):
     groups: dict[str, GroupCfg] = Field(default_factory=dict)
     rules: list[RuleCfg] = Field(default_factory=list)
     audiences: dict[str, AudienceCfg] = Field(default_factory=dict)
+    people: dict[str, PersonCfg] = Field(default_factory=dict)
+    owner_name: str | None = None  # shown to viewers, e.g. "Brandon's time"
 
     @field_validator("timezone")
     @classmethod
@@ -289,7 +362,20 @@ class AppConfig(_Strict):
             if aud.slug in slugs:
                 raise ValueError(f"audiences {slugs[aud.slug]!r} and {aid!r} share the same slug")
             slugs[aud.slug] = aid
+        for pid, person in self.people.items():
+            if person.audience not in self.audiences:
+                raise ValueError(f"person {pid!r} is in audience {person.audience!r}, which is not defined")
+            if person.slug in slugs:
+                raise ValueError(f"person {pid!r} has the same link as {slugs[person.slug]!r}")
+            slugs[person.slug] = pid
         return self
+
+    @property
+    def owner_label(self) -> str:
+        name = (self.owner_name or "").strip()
+        if not name:
+            return "Owner's time"
+        return f"{name}' time" if name.endswith("s") else f"{name}'s time"
 
     @property
     def tz(self) -> ZoneInfo:

@@ -67,7 +67,19 @@
     <div>
       <h3>Public share links</h3>
       <p class="muted small">Lets people you send a link to open their page from anywhere. They only ever see what you allow, and nothing else is reachable.</p>
-      {% if ts.public_published %}<p class="small">Links start with <code>{{ ts.public_url }}/a/…</code></p>{% endif %}
+      {% if ts.public_published %}<p class="small">Links start with <code>{{ ts.public_url }}/a/…</code></p>
+      <form method="post" action="/setup/check-public" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="secondary small">Test from the internet</button>
+        <span class="hint">Checks the way someone without Tailscale would open a link.</span>
+      </form>
+      {% if check %}
+      <div class="{{ 'flash' if check.ok else 'error' }} check-result" role="status">
+        <p><b>{{ check.summary }}</b></p>
+        {% if check.detail %}<p class="small">{{ check.detail }}</p>{% endif %}
+      </div>
+      {% endif %}
+      {% endif %}
     </div>
     <div class="setup-action">
       {% if ts.public_published %}

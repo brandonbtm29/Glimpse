@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ aud.title }} · {{ view.label }}{% endblock %}
+
+{% block body %}
+<main class="page">
+  {% include "_top.html" %}
+  {% include "_month.html" %}
+  {% include "_foot.html" %}
+</main>
+{% endblock %}

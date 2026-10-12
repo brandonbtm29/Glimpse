@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from ..config import AppConfig, AudienceCfg, Level
 from ..policy import VisibleEvent
@@ -95,6 +96,15 @@ class WeekView:
     hour_end: int
     legend: list[tuple[str, str, str | None]]  # (name, css class, custom colour)
     has_busy: bool
+    tz: ZoneInfo | None = None  # zone the times are shown in
+    owner_tz: ZoneInfo | None = None  # the calendar owner's zone, when different
+
+    def owner_time(self, dt: datetime) -> str:
+        """The same moment on the owner's clock, for hover text when zones differ."""
+        if self.owner_tz is None:
+            return ""
+        o = dt.astimezone(self.owner_tz)
+        return f"{fmt_time(o)} {o.tzname()}"
 
     @property
     def range_label(self) -> str:
@@ -167,11 +177,14 @@ def build_week(
     start: date,
     events: list[VisibleEvent],
     today: date,
+    tz: ZoneInfo | None = None,
 ) -> WeekView:
-    tz = cfg.tz
+    tz = tz or cfg.tz
+    shifted = tz.key != cfg.timezone
     dates = [start + timedelta(days=i) for i in range(7)]
     days = [DayView(day=d, is_today=d == today) for d in dates]
-    if audience.hours:
+    if audience.hours and not shifted:
+        # Hour limits are on the owner's clock; in another zone they can land on any weekday.
         allowed = audience.hours.weekday_numbers
         days = [d for d in days if d.day.weekday() in allowed]
 
@@ -197,7 +210,7 @@ def build_week(
                 dv.timed.append(blk)
                 timed_all.append(blk)
 
-    h0, h1 = _hour_bounds(audience, timed_all)
+    h0, h1 = _hour_bounds(audience if not shifted else audience.model_copy(update={"hours": None}), timed_all)
     span = (h1 - h0) * 60
     for dv in days:
         visible = []
@@ -224,4 +237,6 @@ def build_week(
         hour_end=max(h1, h0 + 1),
         legend=legend,
         has_busy=has_busy,
+        tz=tz,
+        owner_tz=cfg.tz if shifted else None,
     )

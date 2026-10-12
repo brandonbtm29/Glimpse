@@ -300,3 +300,43 @@ def test_cli_init_setup_later(tmp_path):
     loaded = load_config(cfg)
     assert loaded.admin.password_hash is None and loaded.admin.setup_token
     assert Path(cfg.parent / ".env").exists()
+
+
+# --- public reachability check ------------------------------------------------------------
+
+
+class _Resp:
+    def __init__(self, status, text):
+        self.status_code, self.text = status, text
+
+
+def test_check_public_paths(monkeypatch):
+    import httpx
+
+    from glimpse import tailscale as t
+
+    host = "pc.tail1234.ts.net"
+    monkeypatch.setattr(t, "public_dns", lambda h: None)
+    assert not t.check_public(host).ok
+    monkeypatch.setattr(t, "public_dns", lambda h: [])
+    assert "doesn't know" in t.check_public(host).summary
+    monkeypatch.setattr(t, "public_dns", lambda h: ["100.90.1.2"])
+    assert "private" in t.check_public(host).summary
+
+    seen = {}
+
+    def fake_get(self, url, headers=None, extensions=None):
+        seen.update(url=url, host=headers["Host"], sni=extensions["sni_hostname"])
+        return _Resp(200, '{"ok":true}')
+
+    monkeypatch.setattr(t, "public_dns", lambda h: ["209.177.145.97"])
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    res = t.check_public(host)
+    assert res.ok and seen == {"url": "https://209.177.145.97/healthz", "host": host, "sni": host}
+
+    def boom(*a, **k):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx.Client, "get", boom)
+    res = t.check_public(host)
+    assert not res.ok and "refused" in res.detail

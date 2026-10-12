@@ -19,6 +19,14 @@
   </section>
 
   <section class="panel">
+    <h2>About you</h2>
+    <label>Your first name <span class="muted">(optional)</span>
+      <input type="text" name="owner_name" value="{{ cfg.owner_name or '' }}" maxlength="40" placeholder="Brandon">
+      <span class="hint">Viewers in other time zones see a &ldquo;Show {{ cfg.owner_label }}&rdquo; option, and expired links say who to ask.</span>
+    </label>
+  </section>
+
+  <section class="panel">
     <h2>Time</h2>
     <div class="grid2">
       <label>Time zone

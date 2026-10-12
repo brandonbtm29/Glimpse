@@ -1,6 +1,7 @@
 # --- Your private settings: NEVER commit these ---
 /config.yaml
 /.env
+/state.json
 .env.local
 cache/
 *.ics.cache

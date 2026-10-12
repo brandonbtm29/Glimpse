@@ -181,6 +181,7 @@ def clip_to_hours(
 
 
 def _all_day_parts(ev: Event, audience: AudienceCfg, tz: ZoneInfo) -> list[tuple[datetime, datetime]]:
+    """One midnight-to-midnight part per date, in ``tz``: all-day events are tied to dates, not instants."""
     allowed = audience.hours.weekday_numbers if audience.hours else set(range(7))
     out = []
     for d in _days(ev.start, ev.end):
@@ -196,9 +197,15 @@ def visible_events(
     events: list[Event],
     range_start: datetime,
     range_end: datetime,
+    display_tz: ZoneInfo | None = None,
 ) -> list[VisibleEvent]:
-    """Filter and redact ``events`` for one audience within a date range."""
+    """Filter and redact ``events`` for one audience within a date range.
+
+    Hour limits always apply in the owner's zone. Results are expressed in
+    ``display_tz`` (the viewer's zone); all-day events keep their calendar date.
+    """
     tz = cfg.tz
+    dtz = display_tz or tz
     tags = [cfg.overrides.private_tag, cfg.overrides.hide_tag]
     out: list[VisibleEvent] = []
 
@@ -213,11 +220,12 @@ def visible_events(
             continue
 
         if ev.all_day:
-            parts = _all_day_parts(ev, audience, tz)
+            parts = _all_day_parts(ev, audience, dtz)
         elif audience.hours:
             parts = clip_to_hours(ev.start, ev.end, audience.hours, tz)
         else:
             parts = [(ev.start, ev.end)]
+        parts = [(s.astimezone(dtz), e.astimezone(dtz)) for s, e in parts]
 
         cal = cfg.calendars[ev.calendar_id]
         for s, e in parts:

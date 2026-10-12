@@ -9,7 +9,7 @@
 {%- endmacro %}
 
 {% macro hover(b) -%}
-{{ b.ev.title }} · {% if b.ev.all_day %}all day{% else %}{{ b.time_label }}{% endif %}
+{{ b.ev.title }} · {% if b.ev.all_day %}all day{% else %}{{ b.time_label }}{% if view.owner_tz %} ({{ view.owner_time(b.start) }}){% endif %}{% endif %}
 {%- if b.ev.location %} · {{ b.ev.location }}{% endif %}
 {%- if b.ev.calendar_name and b.ev.level.value != 'label' %} · {{ b.ev.calendar_name }}{% endif %}
 {%- if b.ev.notes %}

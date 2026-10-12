@@ -102,7 +102,10 @@ def cmd_preview(args: argparse.Namespace) -> None:
 
 
 def cmd_links(args: argparse.Namespace) -> None:
+    from datetime import date
+
     from .web.auth import feed_token
+    from .web.viewer import person_viewer
 
     cfg = _load(args)
     base = cfg.server.base_url.rstrip("/")
@@ -112,6 +115,14 @@ def cmd_links(args: argparse.Namespace) -> None:
         if aud.allow_ics:
             print(f"  feed   {base}/a/{aud.slug}/feed/{feed_token(cfg, aid)}.ics")
         print(f"  login  {'password required' if aud.password_hash else 'link only'}")
+        if not aud.shared_link:
+            print("  (shared link switched off: only personal links work)")
+        for pid, person in cfg.people.items():
+            if person.audience != aid:
+                continue
+            v = person_viewer(cfg, pid)
+            state = "" if not person.expired(date.today()) else "  [expired/off]"
+            print(f"  person {person.name}: {base}{v.base}{state}")
 
 
 def _ask_new_password(minimum: int, given: str | None = None) -> str:

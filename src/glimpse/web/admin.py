@@ -31,15 +31,19 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from starlette.concurrency import run_in_threadpool
 
 from .. import __version__, autostart, tailscale
-from ..config import WEEKDAYS, AppConfig, AudienceCfg, ConfigError, Level, RuleCfg
-from ..core import allowed_week_bounds, week_range, week_start
+from ..config import VIEW_ORDER, WEEKDAYS, AppConfig, AudienceCfg, ConfigError, Level, RuleCfg
+from ..core import add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..events import parse_events
 from ..policy import rule_matches
-from ..render.week import PALETTE_SIZE, build_week, fmt_day, fmt_time
+from ..render.periods import build_heat, build_month
+from ..render.week import PALETTE_SIZE, build_week, fmt_day, fmt_range, fmt_time
 from ..sources import USER_AGENT, normalize_url
 from ..store import Draft, _env_name, finish_setup
+from .app import COMMON_ZONES, VIEW_LABELS
 from .auth import LoginLimiter, feed_token
 from .runtime import Runtime
+from .state import ago
+from .viewer import person_viewer
 
 log = logging.getLogger("glimpse.admin")
 HERE = Path(__file__).parent
@@ -81,6 +85,16 @@ FLASH = {
     "grp_deleted": "Group removed. Its calendars are still here, now without a group.",
     "rule_added": "Rule added. It applies to every audience right away.",
     "rule_deleted": "Rule removed.",
+    "person_added": "Person added. Copy their link below and send it to them.",
+    "person_deleted": "Person removed. Their link no longer works.",
+    "person_rotated": "New link created for them. Their old link has stopped working.",
+    "person_moved": "Moved. Their link now shows the new audience's view.",
+}
+VIEW_HELP = {
+    "week": "Week: the hour-by-hour grid",
+    "month": "Month: a calendar with each day's items",
+    "quarter": "3 months: how busy each day is, no titles",
+    "year": "Year: how busy each day is, no titles",
 }
 RULE_FIELDS = {"title": "Title", "notes": "Notes", "location": "Location"}
 RULE_PREVIEW_WEEKS = 4
@@ -273,6 +287,50 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         aud = cfg().audiences[aid]
         return f"{cfg().server.base_url.rstrip('/')}/a/{aud.slug}/feed/{feed_token(cfg(), aid)}.ics"
 
+    def person_link(pid: str) -> str:
+        return f"{cfg().server.base_url.rstrip('/')}/p/{cfg().people[pid].slug}"
+
+    def person_feed_link(pid: str) -> str:
+        v = person_viewer(cfg(), pid)
+        return f"{cfg().server.base_url.rstrip('/')}{v.base}/feed/{feed_token(cfg(), v)}.ics"
+
+    def people_rows(audience: str | None = None) -> list[dict]:
+        c = cfg()
+        today = rt.glimpse.today()
+        rows = []
+        for pid, p in c.people.items():
+            if audience and p.audience != audience:
+                continue
+            last = rt.seen.get(f"person:{pid}")
+            synced = rt.seen.get(f"person:{pid}:feed")
+            if not p.enabled:
+                status = ("off", "Switched off")
+            elif p.expires and today > p.expires:
+                status = ("expired", f"Expired {fmt_day(p.expires)}")
+            elif p.expires:
+                status = ("ok", f"Until {fmt_day(p.expires)}")
+            else:
+                status = ("ok", "Active")
+            rows.append(
+                {
+                    "id": pid,
+                    "p": p,
+                    "aud": c.audiences[p.audience],
+                    "link": person_link(pid),
+                    "status": status,
+                    "seen": ago(last),
+                    "synced": ago(synced) if synced else None,
+                    "password": "own"
+                    if p.password_hash
+                    else (
+                        "audience"
+                        if p.use_audience_password and c.audiences[p.audience].password_hash
+                        else "none"
+                    ),
+                }
+            )
+        return rows
+
     def feed_rows() -> list[dict]:
         c = cfg()
         g = rt.glimpse
@@ -452,6 +510,20 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": res},
             sess,
             status=200,
+        )
+
+    @app.post("/setup/check-public", response_class=HTMLResponse)
+    async def setup_check_public(request: Request):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        ts = await run_in_threadpool(ts_status, True)
+        check = await run_in_threadpool(tailscale.check_public, ts.dns_name)
+        return page(
+            request,
+            "admin/setup.html",
+            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": None, "check": check},
+            sess,
         )
 
     @app.post("/setup/tailscale/panel")
@@ -768,7 +840,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "link": public_link(aud),
                 "feed": feed_link(aid) if aud.allow_ics else None,
                 "feeds": feed_rows(),
-                "range": f"{fmt_day(lo)} to {fmt_day(hi + timedelta(days=6))}",
+                "range": fmt_range(lo, hi + timedelta(days=6)),
+                "people": people_rows(aid),
+                "seen": ago(rt.seen.get(f"audience:{aid}")),
+                "view_help": VIEW_HELP,
+                "zones": sorted({*COMMON_ZONES, cfg().timezone, *([aud.timezone] if aud.timezone else [])}),
                 "error": error,
             },
             sess,
@@ -822,8 +898,17 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node.pop("hours", None)
             node["weeks_ahead"] = num("weeks_ahead", 4)
             node["weeks_behind"] = num("weeks_behind", 1)
-            for flag in ("show_all_day_busy", "allow_excel", "allow_ics"):
+            for flag in ("show_all_day_busy", "allow_excel", "allow_ics", "shared_link"):
                 node[flag] = form.get(flag) == "on"
+            views = [v for v in VIEW_ORDER if v in form.getlist("view")] or ["week"]
+            node["views"] = views
+            dv = str(form.get("default_view", "week"))
+            node["default_view"] = dv if dv in views else views[0]
+            zone = str(form.get("timezone", ""))
+            if zone and zone in zoneinfo.available_timezones() and zone != d.raw.get("timezone"):
+                node["timezone"] = zone
+            else:
+                node.pop("timezone", None)
 
         try:
             await save(mutate)
@@ -1008,46 +1093,240 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             await save(lambda d: d.remove_rule(index))
         return done("/rules", "rule_deleted")
 
+    # -- people ------------------------------------------------------------------------------
+
+    def people_page(request, sess, error=None, status=200, values=None):
+        return page(
+            request,
+            "admin/people.html",
+            {
+                "rows": people_rows(),
+                "form": values or {"name": "", "audience": next(iter(cfg().audiences), ""), "expires": ""},
+                "error": error,
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/people", response_class=HTMLResponse)
+    def people(request: Request):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        return people_page(request, sess)
+
+    def _expires(value: str) -> tuple[str | None, str | None]:
+        value = value.strip()
+        if not value:
+            return None, None
+        if not _DATE.match(value):
+            return None, "Use a date like 2026-12-31 for when the link stops working."
+        return value, None
+
+    @app.post("/people/add", response_class=HTMLResponse)
+    async def person_add(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        values = {k: str(form.get(k, "")).strip() for k in ("name", "audience", "expires")}
+        expires, err = _expires(values["expires"])
+        if not values["name"]:
+            err = "Give them a name (only you see it, plus a hello on their page)."
+        elif values["audience"] not in cfg().audiences:
+            err = "Pick which audience they belong to."
+        if err:
+            return people_page(request, sess, err, 400, values)
+        box: dict[str, str] = {}
+
+        def mutate(d: Draft) -> None:
+            box["id"] = d.add_person(values["name"][:60], values["audience"], expires)
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return people_page(request, sess, str(exc), 400, values)
+        return done(f"/people/{box['id']}", "person_added")
+
+    def person_page(request, sess, pid, error=None, status=200):
+        row = next(r for r in people_rows() if r["id"] == pid)
+        return page(
+            request,
+            "admin/person.html",
+            {
+                "pid": pid,
+                "row": row,
+                "feed": person_feed_link(pid) if row["aud"].allow_ics else None,
+                "error": error,
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/people/{pid}", response_class=HTMLResponse)
+    def person(request: Request, pid: str):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        if pid not in cfg().people:
+            return RedirectResponse("/people", status_code=303)
+        return person_page(request, sess, pid)
+
+    @app.post("/people/{pid}", response_class=HTMLResponse)
+    async def person_save(request: Request, pid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if pid not in cfg().people:
+            return RedirectResponse("/people", status_code=303)
+        expires, err = _expires(str(form.get("expires", "")))
+        audience = str(form.get("audience", ""))
+        if audience not in cfg().audiences:
+            err = "Pick which audience they belong to."
+        if err:
+            return person_page(request, sess, pid, err, 400)
+        moved = audience != cfg().people[pid].audience
+
+        def mutate(d: Draft) -> None:
+            node = d.people[pid]
+            name = str(form.get("name", "")).strip()[:60]
+            if name:
+                node["name"] = name
+            node["audience"] = audience
+            if expires:
+                node["expires"] = expires
+            else:
+                node.pop("expires", None)
+            node["enabled"] = form.get("enabled") == "on"
+            note = str(form.get("note", "")).strip()[:200]
+            if note:
+                node["note"] = note
+            else:
+                node.pop("note", None)
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return person_page(request, sess, pid, str(exc), 400)
+        return done(f"/people/{pid}", "person_moved" if moved else "saved")
+
+    @app.post("/people/{pid}/password", response_class=HTMLResponse)
+    async def person_password(request: Request, pid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if pid not in cfg().people:
+            return RedirectResponse("/people", status_code=303)
+        mode = str(form.get("mode", "audience"))
+        if mode == "own":
+            pw, pw2 = str(form.get("password", "")), str(form.get("password2", ""))
+            if len(pw) < 8:
+                return person_page(request, sess, pid, "Use at least 8 characters for the password.", 400)
+            if pw != pw2:
+                return person_page(request, sess, pid, "The two passwords didn't match.", 400)
+            h = await run_in_threadpool(_hasher.hash, pw)
+            await save(lambda d: d.set_person_password(pid, h))
+            return done(f"/people/{pid}", "pw_set")
+
+        def mutate(d: Draft) -> None:
+            d.set_person_password(pid, None)
+            d.people[pid]["use_audience_password"] = mode == "audience"
+
+        await save(mutate)
+        return done(f"/people/{pid}", "saved")
+
+    @app.post("/people/{pid}/rotate")
+    async def person_rotate(request: Request, pid: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if pid in cfg().people:
+            await save(lambda d: d.rotate_person_slug(pid))
+        return done(f"/people/{pid}", "person_rotated")
+
+    @app.post("/people/{pid}/delete")
+    async def person_delete(request: Request, pid: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        await save(lambda d: d.remove_person(pid))
+        rt.seen.forget(f"person:{pid}")
+        rt.seen.forget(f"person:{pid}:feed")
+        return done("/people", "person_deleted")
+
     # -- preview -------------------------------------------------------------------------------
 
     @app.get("/preview", response_class=HTMLResponse)
-    def preview(request: Request, view_as: str = "", week: str = ""):
+    def preview(request: Request, view_as: str = "", week: str = "", mode: str = ""):
         sess = session(request)
         if not sess:
             return to_login()
         c = cfg()
         g = rt.glimpse
         everything = AudienceCfg(
-            title="Everything (only you see this)", slug="preview-everything-only", default=Level.FULL
+            title="Everything (only you see this)",
+            slug="preview-everything-only",
+            default=Level.FULL,
+            views=list(VIEW_ORDER),
         )
         if view_as not in c.audiences:
             view_as = "_all" if view_as == "_all" or not c.audiences else next(iter(c.audiences))
         aud = everything if view_as == "_all" else c.audiences[view_as]
+        mode = mode if mode in aud.views else aud.default_view
         day = date.fromisoformat(week) if _DATE.match(week or "") else g.today()
-        start = week_start(day, c)
-        outside = False
-        if view_as != "_all":
-            lo, hi = allowed_week_bounds(aud, g.today(), c)
-            outside = not lo <= start <= hi
-        view = build_week(c, aud, start, g.week(aud, start), g.today())
-        return page(
-            request,
-            "admin/preview.html",
-            {
+        today = g.today()
+        tz = c.tz
+        if view_as == "_all":
+            lo, hi = date.min, date.max
+        else:
+            wlo, whi = allowed_week_bounds(aud, today, c)
+            lo, hi = wlo, whi + timedelta(days=6)
+        ctx: dict[str, Any] = {
+            "view_as": view_as,
+            "aud": aud,
+            "mode": mode,
+            "modes": [(m, VIEW_LABELS[m]) for m in aud.views],
+            "link": public_link(aud) if view_as != "_all" else None,
+            "hour_px": 40,
+            "show_copies": True,
+            "base": "",
+            "week_link": False,
+        }
+        if mode == "week":
+            start = week_start(day, c)
+            view = build_week(c, aud, start, g.week(aud, start), today)
+            ctx |= {
                 "view": view,
-                "view_as": view_as,
-                "aud": aud,
+                "anchor": start.isoformat(),
+                "range_label": view.range_label,
                 "prev": (start - timedelta(weeks=1)).isoformat(),
                 "next": (start + timedelta(weeks=1)).isoformat(),
-                "this_week": week_start(g.today(), c).isoformat(),
-                "is_this_week": start == week_start(g.today(), c),
-                "outside": outside,
-                "link": public_link(aud) if view_as != "_all" else None,
-                "hour_px": 40,
-                "show_copies": True,
-            },
-            sess,
-        )
+                "now": week_start(today, c).isoformat(),
+                "is_now": start == week_start(today, c),
+                "outside": not (lo <= start <= hi),
+            }
+        else:
+            first, end = period_bounds(mode, day)
+            step = {"month": 1, "quarter": 3, "year": 12}[mode]
+            q0, q1 = max(first, lo), min(end, hi + timedelta(days=1)) if hi != date.max else end
+            events = g.view(aud, *day_range(q0, q1, tz), tz) if q0 < q1 else []
+            if mode == "month":
+                view = build_month(c, aud, first, events, today, (lo, hi), tz)
+                label = view.label
+            else:
+                view = build_heat(c, aud, first, end, mode, events, today, (lo, hi), tz)
+                label = view.label
+            now_first, _ = period_bounds(mode, today)
+            ctx |= {
+                "view": view,
+                "anchor": first.isoformat(),
+                "range_label": label,
+                "prev": add_months(first, -step).isoformat(),
+                "next": add_months(first, step).isoformat(),
+                "now": now_first.isoformat(),
+                "is_now": first == now_first,
+                "outside": end <= lo or first > hi,
+            }
+        return page(request, "admin/preview.html", ctx, sess)
 
     # -- settings ------------------------------------------------------------------------------
 
@@ -1096,6 +1375,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             ov["hide_tag"] = str(form.get("hide_tag", "#hide")).strip()
             ov["honor_private_flag"] = form.get("honor_private_flag") == "on"
             ov["merge_duplicates"] = form.get("merge_duplicates") == "on"
+            owner = str(form.get("owner_name", "")).strip()[:40]
+            if owner:
+                r["owner_name"] = owner
+            else:
+                r.pop("owner_name", None)
             d.section("admin")["allowed_tailscale_users"] = users
 
         try:

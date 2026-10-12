@@ -11,7 +11,8 @@
 </header>
 
 <section class="panel">
-  <h2>Link</h2>
+  <div class="panelhead"><h2>Shared link</h2><span class="muted small">Last opened {{ seen }}</span></div>
+  {% if not aud.shared_link %}<p class="notice">The shared link is switched off: only people with their own link (below) can open this page.</p>{% endif %}
   <div class="copyrow">
     <input type="text" readonly value="{{ link }}" aria-label="Page link">
     <button type="button" class="secondary small" data-copy="{{ link }}">Copy</button>
@@ -28,6 +29,26 @@
     <button type="submit" class="secondary small">Make a new link</button>
     <span class="hint">Use this to cut off access. Send the new link to people who should keep it.</span>
   </form>
+</section>
+
+<section class="panel">
+  <div class="panelhead"><h2>People</h2><a href="/people">Add or manage &rarr;</a></div>
+  {% if people %}
+  <table class="table compact">
+    <tbody>
+    {% for r in people %}
+      <tr>
+        <td><a href="/people/{{ r.id }}"><strong>{{ r.p.name }}</strong></a></td>
+        <td><span class="status {{ 'ok' if r.status[0] == 'ok' else 'bad' }}">{{ r.status[1] }}</span></td>
+        <td class="muted">Last viewed {{ r.seen }}</td>
+        <td class="right"><button type="button" class="secondary small" data-copy="{{ r.link }}">Copy link</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Nobody has their own link yet. Personal links let you see who's looking, set an end date, and cut off one person without changing everyone's link.</p>
+  {% endif %}
 </section>
 
 <section class="panel">
@@ -92,7 +113,30 @@
       </label>
     </div>
 
+    <fieldset class="checks">
+      <legend>Views they can switch between</legend>
+      {% for v in ['week', 'month', 'quarter', 'year'] %}
+      <label class="check"><input type="checkbox" name="view" value="{{ v }}" {% if v in aud.views %}checked{% endif %}> {{ view_help[v] }}</label>
+      {% endfor %}
+    </fieldset>
+    <div class="grid2">
+      <label>Opens on
+        <select name="default_view">
+          {% for v in ['week', 'month', 'quarter', 'year'] %}<option value="{{ v }}" {% if aud.default_view == v %}selected{% endif %}>{{ view_help[v].split(':')[0] }}</option>{% endfor %}
+        </select>
+        <span class="hint">Must be one of the ticked views.</span>
+      </label>
+      <label>Show times in
+        <select name="timezone">
+          <option value="">Your time zone ({{ cfg.timezone }})</option>
+          {% for z in zones %}{% if z != cfg.timezone %}<option value="{{ z }}" {% if aud.timezone == z %}selected{% endif %}>{{ z.replace('_', ' ') }}</option>{% endif %}{% endfor %}
+        </select>
+        <span class="hint">Viewers can still switch on their page. Hour limits stay on your clock.</span>
+      </label>
+    </div>
+
     <div class="checks">
+      <label class="check"><input type="checkbox" name="shared_link" {% if aud.shared_link %}checked{% endif %}> Shared link works <span class="muted">(off: only people's own links work)</span></label>
       <label class="check"><input type="checkbox" name="allow_excel" {% if aud.allow_excel %}checked{% endif %}> Allow &ldquo;Download as Excel&rdquo;</label>
       <label class="check"><input type="checkbox" name="allow_ics" {% if aud.allow_ics %}checked{% endif %}> Allow subscribing in a calendar app</label>
       <label class="check"><input type="checkbox" name="show_all_day_busy" {% if aud.show_all_day_busy %}checked{% endif %}> Show all-day events as Busy <span class="muted">(off: birthdays and reminders don't block whole days)</span></label>
@@ -103,8 +147,8 @@
 
 <section class="panel danger">
   <h2>Delete audience</h2>
-  <p class="muted">The link stops working immediately.</p>
-  <form method="post" action="/audiences/{{ aid }}/delete" data-confirm="Delete {{ aud.title }}? Its link will stop working.">
+  <p class="muted">The link stops working immediately{% if people %}, and so do the {{ people | length }} personal link{{ '' if people | length == 1 else 's' }} in it{% endif %}.</p>
+  <form method="post" action="/audiences/{{ aid }}/delete" data-confirm="Delete {{ aud.title }}?{% if people %} {{ people | length }} {{ 'person' if people | length == 1 else 'people' }} will lose access too.{% endif %} Its link will stop working.">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button type="submit" class="danger">Delete {{ aud.title }}</button>
   </form>

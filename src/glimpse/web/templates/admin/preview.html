@@ -9,27 +9,36 @@
 </header>
 
 <nav class="tabs" aria-label="View as">
-  <a href="/preview?view_as=_all&week={{ view.start.isoformat() }}" {% if view_as == '_all' %}aria-current="page"{% endif %}>Everything</a>
+  <a href="/preview?view_as=_all&mode={{ mode }}&week={{ anchor }}" {% if view_as == '_all' %}aria-current="page"{% endif %}>Everything</a>
   {% for aid, a in cfg.audiences.items() %}
-  <a href="/preview?view_as={{ aid }}&week={{ view.start.isoformat() }}" {% if view_as == aid %}aria-current="page"{% endif %}>{{ a.title }}</a>
+  <a href="/preview?view_as={{ aid }}&mode={{ mode }}&week={{ anchor }}" {% if view_as == aid %}aria-current="page"{% endif %}>{{ a.title }}</a>
   {% endfor %}
 </nav>
 
 <div class="preview-frame">
   <header class="top">
     <div class="heading">
-      <h2 class="ptitle">{{ view.title }}</h2>
-      <p class="range">{{ view.range_label }}</p>
+      <h2 class="ptitle">{{ aud.title }}</h2>
+      <p class="range">{{ range_label }}</p>
     </div>
-    <nav class="weeknav" aria-label="Week">
-      <a class="btn" href="/preview?view_as={{ view_as }}&week={{ prev }}" aria-label="Previous week">&#8249;</a>
-      {% if is_this_week %}<span class="btn current">This week</span>{% else %}<a class="btn" href="/preview?view_as={{ view_as }}&week={{ this_week }}">This week</a>{% endif %}
-      <a class="btn" href="/preview?view_as={{ view_as }}&week={{ next }}" aria-label="Next week">&#8250;</a>
-    </nav>
+    <div class="controls">
+      {% if modes | length > 1 %}
+      <nav class="views" aria-label="View">
+        {% for m, label in modes %}
+        {% if m == mode %}<span class="tab current">{{ label }}</span>{% else %}<a class="tab" href="/preview?view_as={{ view_as }}&mode={{ m }}&week={{ anchor }}">{{ label }}</a>{% endif %}
+        {% endfor %}
+      </nav>
+      {% endif %}
+      <nav class="weeknav" aria-label="Previous and next">
+        <a class="btn" href="/preview?view_as={{ view_as }}&mode={{ mode }}&week={{ prev }}" aria-label="Previous">&#8249;</a>
+        {% if is_now %}<span class="btn current">Now</span>{% else %}<a class="btn" href="/preview?view_as={{ view_as }}&mode={{ mode }}&week={{ now }}">Now</a>{% endif %}
+        <a class="btn" href="/preview?view_as={{ view_as }}&mode={{ mode }}&week={{ next }}" aria-label="Next">&#8250;</a>
+      </nav>
+    </div>
   </header>
-  {% if outside %}<p class="notice">This week is outside what {{ aud.title }} can browse; they'd be sent to the nearest allowed week.</p>{% endif %}
+  {% if outside %}<p class="notice">This is outside what {{ aud.title }} can browse; they'd be sent to the nearest allowed {{ 'week' if mode == 'week' else 'period' }}.</p>{% endif %}
   {% if view_as == '_all' %}<p class="notice subtle">Every calendar at full detail, with no hour limits. Nobody else sees this view.</p>{% endif %}
-  {% include "_week.html" %}
+  {% if mode == 'week' %}{% include "_week.html" %}{% elif mode == 'month' %}{% include "_month.html" %}{% else %}{% include "_heat.html" %}{% endif %}
 </div>
 
 {% if link %}

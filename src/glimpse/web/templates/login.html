@@ -2,8 +2,9 @@
 {% block title %}{{ aud.title }}{% endblock %}
 {% block body %}
 <main class="card-page">
-  <form class="card" method="post" action="/a/{{ slug }}/login" autocomplete="on">
+  <form class="card" method="post" action="{{ base }}/login" autocomplete="on">
     <h1>{{ aud.title }}</h1>
+    {% if person %}<p class="muted">Hi {{ person.name }}.</p>{% endif %}
     <p class="muted">Enter the password you were given to see this schedule.</p>
     {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
     <label for="pw">Password</label>

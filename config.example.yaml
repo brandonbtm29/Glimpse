@@ -115,6 +115,30 @@ audiences:
     show_all_day_busy: false            # all-day events at `busy` level are usually reminders
     allow_excel: true
     allow_ics: true                     # lets them subscribe in their own calendar app
+    views: [week, month, quarter, year] # which views they can switch between
+    default_view: week
+    timezone: null                      # e.g. Europe/Berlin to show times there by default
+    shared_link: true                   # false: only people's own links (below) work
     calendars:
       classes: label                    # ...except Classes, which shows only "Class"
       family: hidden
+
+# ---------------------------------------------------------------------------
+# People (optional): someone's own link into an audience. Move them by changing
+# `audience`; their link keeps working and shows the new view. Links stop working
+# after `expires`. Without their own password_hash they use the audience's
+# (set use_audience_password: false for no password at all).
+# ---------------------------------------------------------------------------
+people:
+  alex:
+    name: Alex
+    audience: partner
+    slug: ${GLIMPSE_PERSON_ALEX_SLUG}
+  priya:
+    name: Priya
+    audience: coworkers
+    slug: ${GLIMPSE_PERSON_PRIYA_SLUG}
+    expires: 2026-12-31
+
+# Shown to viewers in other time zones ("Show Brandon's time") and on expired links.
+owner_name: null

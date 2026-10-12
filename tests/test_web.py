@@ -71,7 +71,9 @@ def test_coworker_page_never_contains_hidden_text(client):
 
 def test_security_headers(client):
     r = client.get(f"/a/{COWORKER_SLUG}/week/{W}")
-    assert "script-src" not in r.headers["content-security-policy"]  # default-src 'none'
+    csp = r.headers["content-security-policy"]
+    assert "default-src 'none'" in csp and "script-src 'self';" in csp  # own small script only
+    assert "unsafe-inline" not in csp.split("script-src")[1].split(";")[0]
     assert r.headers["referrer-policy"] == "no-referrer"
     assert "noindex" in r.headers["x-robots-tag"]
     assert r.headers["cache-control"] == "no-store"

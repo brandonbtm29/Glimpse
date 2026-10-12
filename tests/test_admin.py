@@ -353,3 +353,125 @@ def test_duplicate_calendar_merged_and_badge_only_in_preview(admin, rt, public):
     html = public.get(f"/a/{PARTNER_SLUG}/week/{w}").text
     assert 'class="copies"' not in html
     assert html.count(">Dinner with Sam<") == 2  # once in the grid, once in the phone list
+
+
+# --- people, views, time zones in the panel ----------------------------------------------
+
+
+def test_people_page_add_edit_password_delete(admin, rt, public):
+    c = sign_in(admin)
+    assert "Add a person" in admin.get("/people").text
+    r = admin.post("/people/add", data={"csrf": c, "name": "Alex", "audience": "partner", "expires": ""})
+    assert r.status_code == 303 and r.headers["location"].startswith("/people/alex")
+    person = rt.cfg.people["alex"]
+    assert person.audience == "partner" and len(person.slug) >= 16
+    page = admin.get("/people/alex").text
+    assert f"/p/{person.slug}" in page
+    assert person.slug not in (rt.store.config_path.read_text())  # secret lives in .env
+
+    # move to coworkers with an end date; their link follows
+    form = {"csrf": c, "name": "Alex", "audience": "coworkers", "expires": "2027-01-31", "enabled": "on"}
+    assert admin.post("/people/alex", data=form).headers["location"] == "/people/alex?ok=person_moved"
+    assert rt.cfg.people["alex"].audience == "coworkers"
+    assert str(rt.cfg.people["alex"].expires) == "2027-01-31"
+    assert public.get(f"/p/{person.slug}/week/{WEEK.isoformat()}").status_code == 200
+
+    assert admin.post("/people/alex", data={**form, "expires": "next week"}).status_code == 400
+    # own password, then no password
+    admin.post(
+        "/people/alex/password",
+        data={"csrf": c, "mode": "own", "password": "pw-for-alex", "password2": "pw-for-alex"},
+    )
+    assert rt.cfg.people["alex"].password_hash
+    admin.post("/people/alex/password", data={"csrf": c, "mode": "none"})
+    p = rt.cfg.people["alex"]
+    assert p.password_hash is None and p.use_audience_password is False
+
+    old = p.slug
+    admin.post("/people/alex/rotate", data={"csrf": c})
+    assert rt.cfg.people["alex"].slug != old
+    assert public.get(f"/p/{old}/week/{WEEK.isoformat()}").status_code == 404
+
+    admin.post("/people/alex/delete", data={"csrf": c})
+    assert rt.cfg.people == {}
+    assert "GLIMPSE_PERSON_ALEX" not in rt.store.env_path.read_text()
+
+
+def test_people_add_validation(admin):
+    c = sign_in(admin)
+    assert admin.post("/people/add", data={"csrf": c, "name": "", "audience": "partner"}).status_code == 400
+    assert admin.post("/people/add", data={"csrf": c, "name": "X", "audience": "ghost"}).status_code == 400
+
+
+def test_audience_views_zone_and_shared_link(admin, rt):
+    c = sign_in(admin)
+    form = {
+        "csrf": c,
+        "title": "Availability",
+        "default": "busy",
+        "weeks_ahead": "4",
+        "weeks_behind": "1",
+        "view": ["week", "year"],
+        "default_view": "year",
+        "timezone": "Europe/Paris",
+    }
+    assert admin.post("/audiences/coworkers", data=form).status_code == 303
+    aud = rt.cfg.audiences["coworkers"]
+    assert aud.views == ["week", "year"] and aud.default_view == "year"
+    assert aud.timezone == "Europe/Paris" and aud.shared_link is False
+    admin.post(
+        "/audiences/coworkers",
+        data={**form, "view": [], "default_view": "month", "timezone": "", "shared_link": "on"},
+    )
+    aud = rt.cfg.audiences["coworkers"]
+    assert aud.views == ["week"] and aud.default_view == "week" and aud.timezone is None and aud.shared_link
+
+
+def test_preview_modes(admin, rt):
+    c = sign_in(admin)
+    admin.post(
+        "/audiences/coworkers",
+        data={
+            "csrf": c,
+            "title": "Availability",
+            "default": "busy",
+            "weeks_ahead": "52",
+            "weeks_behind": "52",
+            "view": ["week", "month", "quarter", "year"],
+            "default_view": "week",
+            "shared_link": "on",
+        },
+    )
+    for mode, marker in (("month", 'class="month"'), ("quarter", "heat-quarter"), ("year", "heat-year")):
+        html = admin.get(f"/preview?view_as=coworkers&mode={mode}&week=2026-10-01").text
+        assert marker in html, mode
+    html = admin.get("/preview?view_as=partner&mode=year").text  # not allowed for partner: week
+    assert 'class="grid"' in html
+
+
+def test_owner_name_setting(admin, rt):
+    c = sign_in(admin)
+    form = {"csrf": c, "timezone": "America/New_York", "week_starts": "monday", "refresh_minutes": "10"}
+    form |= {"private_tag": "#private", "hide_tag": "#hide", "owner_name": "Brandon"}
+    admin.post("/settings", data=form)
+    assert rt.cfg.owner_name == "Brandon" and rt.cfg.owner_label == "Brandon's time"
+
+
+def test_check_public_route(admin, monkeypatch):
+    from glimpse import tailscale
+
+    c = sign_in(admin)
+    monkeypatch.setattr(
+        tailscale,
+        "status",
+        lambda *a: tailscale.Status(
+            installed=True, running=True, dns_name="pc.ts.net", public_published=True
+        ),
+    )
+    monkeypatch.setattr(
+        tailscale,
+        "check_public",
+        lambda host: tailscale.PublicCheck(True, "Share links work from the internet.", "", ["1.2.3.4"]),
+    )
+    html = admin.post("/setup/check-public", data={"csrf": c}).text
+    assert "Share links work from the internet." in html

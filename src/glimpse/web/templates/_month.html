@@ -1,0 +1,48 @@
+{# Shared by the public page and the settings preview. #}
+
+  {% if view.legend or view.has_busy %}
+  <ul class="legend">
+    {% for name, cls, custom in view.legend %}
+    <li><span class="swatch {{ cls }}" style="{% if custom %}--ev: {{ custom }};{% endif %}"></span>{{ name }}</li>
+    {% endfor %}
+    {% if view.has_busy %}<li><span class="swatch busy"></span>Busy</li>{% endif %}
+  </ul>
+  {% endif %}
+
+  <section class="month" aria-label="{{ view.label }}">
+    <div class="mrow mhead">{% for d in view.dows %}<div>{{ d }}</div>{% endfor %}</div>
+    {% for week in view.weeks %}
+    <div class="mrow">
+      {% for cell in week %}
+      <div class="mcell{% if not cell.in_month %} out{% endif %}{% if not cell.in_range and cell.in_month %} locked{% endif %}{% if cell.is_today %} today{% endif %}">
+        {% set can_open = week_link and cell.in_range and cell.in_month %}
+        {% if can_open %}<a class="mday" href="{{ base }}/week/{{ cell.day.isoformat() }}" aria-label="Week of {{ fmt_day(cell.day) }}">{{ cell.day.day }}</a>{% else %}<span class="mday">{{ cell.day.day }}</span>{% endif %}
+        {% for chip in cell.chips %}
+        <div class="chip {{ chip.color_class }}{% if chip.ev.all_day %} allday{% endif %}" style="{% if chip.color %}--ev: {{ chip.color }};{% endif %}" title="{{ chip.ev.title }}{% if chip.when %} · {{ fmt_time(chip.ev.start) }}–{{ fmt_time(chip.ev.end) }}{% endif %}{% if chip.ev.location %} · {{ chip.ev.location }}{% endif %}">
+          {% if chip.when %}<span class="when">{{ chip.when }}</span> {% endif %}<span class="t">{{ chip.ev.title }}</span>
+        </div>
+        {% endfor %}
+        {% if cell.more %}{% if can_open %}<a class="more" href="{{ base }}/week/{{ cell.day.isoformat() }}">+{{ cell.more }} more</a>{% else %}<span class="more">+{{ cell.more }} more</span>{% endif %}{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="agenda month-agenda" aria-label="Month list">
+    {% for week in view.weeks %}{% for cell in week %}{% if cell.in_month and cell.chips %}
+    <div class="aday{% if cell.is_today %} today{% endif %}">
+      <h2>{{ fmt_day(cell.day) }}{% if cell.is_today %} <span class="badge">Today</span>{% endif %}</h2>
+      <ul>
+        {% for chip in cell.chips %}
+        <li class="ev line {{ chip.color_class }}" style="{% if chip.color %}--ev: {{ chip.color }};{% endif %}">
+          <span class="when">{% if chip.ev.all_day %}All day{% else %}{{ fmt_time(chip.ev.start) }}{% endif %}</span>
+          <span class="t">{{ chip.ev.title }}</span>
+        </li>
+        {% endfor %}
+        {% if cell.more %}<li class="more">+{{ cell.more }} more{% if week_link and cell.in_range %} · <a href="{{ base }}/week/{{ cell.day.isoformat() }}">see the week</a>{% endif %}</li>{% endif %}
+      </ul>
+    </div>
+    {% endif %}{% endfor %}{% endfor %}
+  </section>
+
