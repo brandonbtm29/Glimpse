@@ -104,6 +104,14 @@ class FeedCache:
     def fingerprint(self) -> tuple[int, ...]:
         return tuple(self.states[c].version for c in self.config.calendars)
 
+    def forget(self, cid: str) -> None:
+        """Drop a calendar's downloaded copy (memory and disk)."""
+        self.states[cid] = FeedState()
+        try:
+            self._disk_path(cid).unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("could not remove cache for %s: %s", cid, exc)
+
     # -- internals -----------------------------------------------------------
 
     def _store(self, cid: str, text: str, etag: str | None, last_modified: str | None) -> None:

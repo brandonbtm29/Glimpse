@@ -39,6 +39,28 @@ class Glimpse:
         self.cfg = cfg
         self.cache = cache or FeedCache(cfg)
         self._events: OrderedDict[tuple, list[Event]] = OrderedDict()
+        self.generation = 0
+
+    def apply(self, new_cfg: AppConfig) -> list[str]:
+        """Switch to a new config without a restart.
+
+        Feeds whose link didn't change keep their downloaded copy; returns the ids
+        of calendars that are new or whose link changed (they need a fetch).
+        """
+        old_states, old_cals = self.cache.states, self.cfg.calendars
+        cache = FeedCache(new_cfg)
+        changed = []
+        for cid, cal in new_cfg.calendars.items():
+            old = old_cals.get(cid)
+            if old is not None and old.url == cal.url and cid in old_states:
+                cache.states[cid] = old_states[cid]
+            else:
+                cache.forget(cid)  # never show the old link's events under a new link
+                changed.append(cid)
+        self.cfg, self.cache = new_cfg, cache
+        self.generation += 1
+        self._events.clear()
+        return changed
 
     def today(self) -> date:
         return datetime.now(self.cfg.tz).date()
@@ -54,7 +76,7 @@ class Glimpse:
         return found
 
     def events_between(self, start: datetime, end: datetime) -> list[Event]:
-        key = (self.cache.fingerprint(), start, end)
+        key = (self.generation, self.cache.fingerprint(), start, end)
         if key in self._events:
             self._events.move_to_end(key)
             return self._events[key]

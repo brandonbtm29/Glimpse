@@ -65,7 +65,7 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
                         await asyncio.to_thread(g.cache.refresh_all)
                     except Exception:
                         log.exception("refresh failed")
-                    await asyncio.sleep(cfg.refresh_minutes * 60)
+                    await asyncio.sleep(g.cfg.refresh_minutes * 60)
 
             task = asyncio.create_task(loop())
         yield
@@ -98,7 +98,7 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
     def authed(request: Request, aid: str, aud: AudienceCfg) -> bool:
         if not aud.password_hash:
             return True
-        return session_valid(cfg, aid, request.cookies.get(cookie_name(aid)))
+        return session_valid(g.cfg, aid, request.cookies.get(cookie_name(aid)))
 
     def client_ip(request: Request) -> str:
         return request.client.host if request.client else "unknown"
@@ -115,8 +115,8 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
         times = [st.last_success for st in g.cache.states.values() if st.last_success]
         if not times:
             return ""
-        oldest = min(times).astimezone(cfg.tz)
-        stale = datetime.now(UTC) - min(times) > timedelta(minutes=cfg.refresh_minutes * 6)
+        oldest = min(times).astimezone(g.cfg.tz)
+        stale = datetime.now(UTC) - min(times) > timedelta(minutes=g.cfg.refresh_minutes * 6)
         label = f"Updated {fmt_day(oldest.date())}, {fmt_time(oldest)}"
         return label + (" · some calendars may be out of date" if stale else "")
 
@@ -140,7 +140,7 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
         found = lookup(slug)
         if not found:
             return not_found(request)
-        start = week_start(g.today(), cfg)
+        start = week_start(g.today(), g.cfg)
         return RedirectResponse(f"/a/{slug}/week/{start.isoformat()}", status_code=303)
 
     @app.get("/a/{slug}/week/{day}", response_class=HTMLResponse)
@@ -152,15 +152,15 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
         aid, aud = found
         if not authed(request, aid, aud):
             return RedirectResponse(f"/a/{slug}/login?next={day}", status_code=303)
-        start = week_start(d, cfg)
-        lo, hi = allowed_week_bounds(aud, g.today(), cfg)
+        start = week_start(d, g.cfg)
+        lo, hi = allowed_week_bounds(aud, g.today(), g.cfg)
         if start < lo or start > hi:
             clamped = lo if start < lo else hi
             return RedirectResponse(f"/a/{slug}/week/{clamped.isoformat()}", status_code=303)
         if start != d:
             return RedirectResponse(f"/a/{slug}/week/{start.isoformat()}", status_code=303)
 
-        view = build_week(cfg, aud, start, g.week(aud, start), g.today())
+        view = build_week(g.cfg, aud, start, g.week(aud, start), g.today())
         prev_w, next_w = start - timedelta(weeks=1), start + timedelta(weeks=1)
         ctx = {
             "aud": aud,
@@ -168,10 +168,10 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
             "view": view,
             "prev": prev_w.isoformat() if prev_w >= lo else None,
             "next": next_w.isoformat() if next_w <= hi else None,
-            "this_week": week_start(g.today(), cfg).isoformat(),
-            "is_this_week": start == week_start(g.today(), cfg),
+            "this_week": week_start(g.today(), g.cfg).isoformat(),
+            "is_this_week": start == week_start(g.today(), g.cfg),
             "excel": aud.allow_excel,
-            "ics_url": f"/a/{slug}/feed/{feed_token(cfg, aid)}.ics" if aud.allow_ics else None,
+            "ics_url": f"/a/{slug}/feed/{feed_token(g.cfg, aid)}.ics" if aud.allow_ics else None,
             "has_password": bool(aud.password_hash),
             "freshness": freshness(),
             "hour_px": 44,
@@ -222,11 +222,11 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
         resp = RedirectResponse(f"/a/{slug}/week/{nxt}" if nxt else f"/a/{slug}", status_code=303)
         resp.set_cookie(
             cookie_name(aid),
-            make_session(cfg, aid),
+            make_session(g.cfg, aid),
             max_age=SESSION_DAYS * 86400,
             path=f"/a/{slug}",
             httponly=True,
-            secure=cfg.server.secure_cookies,
+            secure=g.cfg.server.secure_cookies,
             samesite="lax",
         )
         return resp
@@ -252,12 +252,12 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
             return not_found(request)
         if not authed(request, aid, aud):
             return RedirectResponse(f"/a/{slug}/login?next={day}", status_code=303)
-        start = week_start(d, cfg)
-        lo, hi = allowed_week_bounds(aud, g.today(), cfg)
+        start = week_start(d, g.cfg)
+        lo, hi = allowed_week_bounds(aud, g.today(), g.cfg)
         if not lo <= start <= hi:
             return not_found(request)
-        view = build_week(cfg, aud, start, g.week(aud, start), g.today())
-        data = week_to_xlsx(cfg, view)
+        view = build_week(g.cfg, aud, start, g.week(aud, start), g.today())
+        data = week_to_xlsx(g.cfg, view)
         return Response(
             data,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -272,12 +272,12 @@ def create_app(cfg: AppConfig, glimpse: Glimpse | None = None, background_refres
         if not found:
             return not_found(request)
         aid, aud = found
-        if not aud.allow_ics or not hmac.compare_digest(token, feed_token(cfg, aid)):
+        if not aud.allow_ics or not hmac.compare_digest(token, feed_token(g.cfg, aid)):
             return not_found(request)
-        lo, hi = allowed_week_bounds(aud, g.today(), cfg)
-        s, _ = week_range(lo, cfg)
-        _, e = week_range(hi, cfg)
-        body = to_ics(aud.title, g.view(aud, s, e), cfg.refresh_minutes)
+        lo, hi = allowed_week_bounds(aud, g.today(), g.cfg)
+        s, _ = week_range(lo, g.cfg)
+        _, e = week_range(hi, g.cfg)
+        body = to_ics(aud.title, g.view(aud, s, e), g.cfg.refresh_minutes)
         return Response(body, media_type="text/calendar; charset=utf-8")
 
     return app

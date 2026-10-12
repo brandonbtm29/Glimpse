@@ -1,0 +1,112 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ aud.title }} · Glimpse settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <p class="crumb"><a href="/sharing">Who sees what</a> /</p>
+    <h1>{{ aud.title }}</h1>
+    <p class="muted">Can browse {{ range }} · {{ 'Password protected' if aud.password_hash else 'Anyone with the link' }}</p>
+  </div>
+  <a class="button secondary" href="/preview?view_as={{ aid }}">Preview what they see</a>
+</header>
+
+<section class="panel">
+  <h2>Link</h2>
+  <div class="copyrow">
+    <input type="text" readonly value="{{ link }}" aria-label="Page link">
+    <button type="button" class="secondary small" data-copy="{{ link }}">Copy</button>
+  </div>
+  {% if feed %}
+  <p class="hint">Calendar-app subscription (works without the password, so share it like one):</p>
+  <div class="copyrow">
+    <input type="text" readonly value="{{ feed }}" aria-label="Subscription link">
+    <button type="button" class="secondary small" data-copy="{{ feed }}">Copy</button>
+  </div>
+  {% endif %}
+  <form method="post" action="/audiences/{{ aid }}/rotate" data-confirm="Make a new link? The current link (and subscription link) will stop working for everyone." class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="secondary small">Make a new link</button>
+    <span class="hint">Use this to cut off access. Send the new link to people who should keep it.</span>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Password</h2>
+  {% if aud.password_hash %}
+  <p class="muted">This page asks for a password. Visitors stay signed in for 30 days; changing the password signs everyone out.</p>
+  {% else %}
+  <p class="muted">No password: anyone with the link can see this page. Fine for busy-only views; add one for anything more personal.</p>
+  {% endif %}
+  <form method="post" action="/audiences/{{ aid }}/password" class="form inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>{{ 'New password' if aud.password_hash else 'Password' }}
+      <input type="password" name="password" minlength="8" autocomplete="new-password">
+    </label>
+    <label>Repeat it
+      <input type="password" name="password2" minlength="8" autocomplete="new-password">
+    </label>
+    <button type="submit" name="action" value="set">{{ 'Change password' if aud.password_hash else 'Set password' }}</button>
+    {% if aud.password_hash %}
+    <button type="submit" name="action" value="remove" class="secondary" formnovalidate data-confirm="Remove the password? The link alone will open this page.">Remove password</button>
+    {% endif %}
+  </form>
+</section>
+
+<section class="panel">
+  <h2>What they see</h2>
+  <form method="post" action="/audiences/{{ aid }}" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="grid2">
+      <label>Page title
+        <input type="text" name="title" value="{{ aud.title }}" maxlength="60" required>
+        <span class="hint">Shown at the top of their page.</span>
+      </label>
+      <label>Default level
+        <select name="default">
+          {% for lv in LEVELS %}<option value="{{ lv }}" {% if aud.default.value == lv %}selected{% endif %}>{{ lv }} &mdash; {{ LEVEL_HELP[lv] }}</option>{% endfor %}
+        </select>
+        <span class="hint">Per-calendar choices are on <a href="/sharing">Who sees what</a>.</span>
+      </label>
+    </div>
+
+    <fieldset class="hours">
+      <legend><label class="check"><input type="checkbox" name="limit_hours" {% if aud.hours %}checked{% endif %}> Only show certain days and hours</label></legend>
+      <div class="days">
+        {% for d in WEEKDAYS %}
+        <label class="daybox"><input type="checkbox" name="day" value="{{ d }}" {% if (aud.hours and d in aud.hours.days) or (not aud.hours and loop.index <= 5) %}checked{% endif %}><span>{{ DAY_LABELS[d] }}</span></label>
+        {% endfor %}
+      </div>
+      <div class="inline">
+        <label>From <input type="time" name="start" value="{{ aud.hours.start.strftime('%H:%M') if aud.hours else '08:00' }}"></label>
+        <label>To <input type="time" name="end" value="{{ aud.hours.end.strftime('%H:%M') if aud.hours else '18:00' }}"></label>
+      </div>
+      <p class="hint">Events outside these hours are left out; events crossing the edge are trimmed.</p>
+    </fieldset>
+
+    <div class="grid2">
+      <label>Weeks ahead they can browse
+        <input type="number" name="weeks_ahead" min="0" max="52" value="{{ aud.weeks_ahead }}">
+      </label>
+      <label>Weeks back
+        <input type="number" name="weeks_behind" min="0" max="52" value="{{ aud.weeks_behind }}">
+      </label>
+    </div>
+
+    <div class="checks">
+      <label class="check"><input type="checkbox" name="allow_excel" {% if aud.allow_excel %}checked{% endif %}> Allow &ldquo;Download as Excel&rdquo;</label>
+      <label class="check"><input type="checkbox" name="allow_ics" {% if aud.allow_ics %}checked{% endif %}> Allow subscribing in a calendar app</label>
+      <label class="check"><input type="checkbox" name="show_all_day_busy" {% if aud.show_all_day_busy %}checked{% endif %}> Show all-day events as Busy <span class="muted">(off: birthdays and reminders don't block whole days)</span></label>
+    </div>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+</section>
+
+<section class="panel danger">
+  <h2>Delete audience</h2>
+  <p class="muted">The link stops working immediately.</p>
+  <form method="post" action="/audiences/{{ aid }}/delete" data-confirm="Delete {{ aud.title }}? Its link will stop working.">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="danger">Delete {{ aud.title }}</button>
+  </form>
+</section>
+{% endblock %}

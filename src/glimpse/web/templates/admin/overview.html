@@ -1,0 +1,78 @@
+{% extends "admin/base.html" %}
+{% block title %}Overview · Glimpse settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Overview</h1>
+    <p class="muted">{{ feeds | length }} calendar{{ '' if feeds|length == 1 else 's' }} · {{ auds | length }} audience{{ '' if auds|length == 1 else 's' }}</p>
+  </div>
+  <form method="post" action="/refresh">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="back" value="/">
+    <button type="submit" class="secondary">Refresh calendars now</button>
+  </form>
+</header>
+
+{% if local_base %}
+<p class="notice">Your public address is still set to <code>{{ cfg.server.base_url }}</code>, so the links below only work on this PC. Set your Tailscale Funnel address in <a href="/settings">Settings</a>.</p>
+{% endif %}
+
+{% if not feeds %}
+<section class="panel empty-state">
+  <h2>Start by adding a calendar</h2>
+  <p class="muted">Paste the private feed link from Google, Outlook or iCloud. Glimpse checks it before saving.</p>
+  <a class="button" href="/calendars">Add a calendar</a>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panelhead">
+    <h2>Share links</h2>
+    <a href="/sharing">Who sees what &rarr;</a>
+  </div>
+  {% if auds %}
+  <ul class="rows">
+    {% for a in auds %}
+    <li class="row-item">
+      <div class="row-main">
+        <a class="row-title" href="/audiences/{{ a.id }}">{{ a.aud.title }}</a>
+        <span class="tag {{ 'lock' if a.aud.password_hash else 'open' }}">{{ 'Password' if a.aud.password_hash else 'Link only' }}</span>
+        {% if a.aud.hours %}<span class="tag">{{ a.aud.hours.start.strftime('%H:%M') }}–{{ a.aud.hours.end.strftime('%H:%M') }}</span>{% endif %}
+        <span class="tag">Default: {{ a.aud.default.value }}</span>
+      </div>
+      <div class="copyrow">
+        <input type="text" readonly value="{{ a.link }}" aria-label="Link for {{ a.aud.title }}">
+        <button type="button" class="secondary small" data-copy="{{ a.link }}">Copy link</button>
+        <a class="button secondary small" href="/preview?view_as={{ a.id }}">Preview</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No audiences yet. Create one on <a href="/sharing">Who sees what</a>.</p>
+  {% endif %}
+</section>
+
+{% if feeds %}
+<section class="panel">
+  <div class="panelhead">
+    <h2>Calendar health</h2>
+    <a href="/calendars">Manage &rarr;</a>
+  </div>
+  <table class="table">
+    <thead><tr><th>Calendar</th><th>Status</th><th class="num">This week</th><th>Last updated</th></tr></thead>
+    <tbody>
+    {% for f in feeds %}
+      <tr>
+        <td><span class="dot" style="--ev: {{ f.color }}"></span><a href="/calendars/{{ f.id }}">{{ f.cal.name }}</a> <span class="muted small">{{ f.provider }}</span></td>
+        <td>{% if f.status == 'ok' %}<span class="status ok">OK</span>{% elif f.status == 'error' %}<span class="status bad" title="{{ f.error }}">Problem</span>{% else %}<span class="status wait">Waiting</span>{% endif %}</td>
+        <td class="num">{{ f.count }}</td>
+        <td class="muted">{% if f.updated %}{{ fmt_day(f.updated.date()) }}, {{ fmt_time(f.updated) }}{% else %}–{% endif %}</td>
+      </tr>
+      {% if f.status == 'error' %}<tr class="errrow"><td colspan="4">{{ f.error }}{% if f.count %} · still showing the last good copy{% endif %}</td></tr>{% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

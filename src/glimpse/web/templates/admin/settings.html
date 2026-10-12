@@ -1,0 +1,76 @@
+{% extends "admin/base.html" %}
+{% block title %}Settings · Glimpse settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Settings</h1>
+    <p class="muted">General options for every audience.</p>
+  </div>
+</header>
+
+<form method="post" action="/settings" class="form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="panel">
+    <h2>Public address</h2>
+    <label>Base URL
+      <input type="url" name="base_url" value="{{ cfg.server.base_url }}" placeholder="https://my-pc.your-tailnet.ts.net" spellcheck="false">
+      <span class="hint">Your Tailscale Funnel address. Used to build the links you share.</span>
+    </label>
+  </section>
+
+  <section class="panel">
+    <h2>Time</h2>
+    <div class="grid2">
+      <label>Time zone
+        <select name="timezone">
+          {% for z in zones %}<option value="{{ z }}" {% if z == cfg.timezone %}selected{% endif %}>{{ z }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Week starts on
+        <select name="week_starts">
+          <option value="monday" {% if cfg.week_starts == 'monday' %}selected{% endif %}>Monday</option>
+          <option value="sunday" {% if cfg.week_starts == 'sunday' %}selected{% endif %}>Sunday</option>
+        </select>
+      </label>
+      <label>Check calendars every (minutes)
+        <input type="number" name="refresh_minutes" min="1" max="1440" value="{{ cfg.refresh_minutes }}">
+      </label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Private events</h2>
+    <div class="grid2">
+      <label>&ldquo;Busy only&rdquo; tag
+        <input type="text" name="private_tag" value="{{ cfg.overrides.private_tag }}" maxlength="30">
+        <span class="hint">Put this in an event's title or notes to show it as Busy to everyone.</span>
+      </label>
+      <label>&ldquo;Hide completely&rdquo; tag
+        <input type="text" name="hide_tag" value="{{ cfg.overrides.hide_tag }}" maxlength="30">
+        <span class="hint">Put this in an event to hide it from everyone.</span>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" name="honor_private_flag" {% if cfg.overrides.honor_private_flag %}checked{% endif %}> Treat events marked Private in Outlook or Google as Busy only</label>
+  </section>
+
+  <section class="panel">
+    <h2>Who can open this settings panel</h2>
+    <label><span>Tailscale accounts <span class="muted">(optional, one per line)</span></span>
+      <textarea name="allowed_users" rows="3" placeholder="you@example.com" spellcheck="false">{{ cfg.admin.allowed_tailscale_users | join('\n') }}</textarea>
+      <span class="hint">If set, only these Tailscale logins can reach this panel, in addition to the admin password. Leave empty to allow any device on your tailnet.</span>
+    </label>
+  </section>
+  <div class="actions"><button type="submit">Save settings</button></div>
+</form>
+
+<section class="panel">
+  <h2>Change admin password</h2>
+  <form method="post" action="/settings/password" class="form inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Current <input type="password" name="current" autocomplete="current-password" required></label>
+    <label>New <input type="password" name="password" minlength="10" autocomplete="new-password" required></label>
+    <label>Repeat <input type="password" name="password2" minlength="10" autocomplete="new-password" required></label>
+    <button type="submit">Change</button>
+  </form>
+</section>
+{% endblock %}

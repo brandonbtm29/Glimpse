@@ -4,6 +4,8 @@
 .env.local
 cache/
 *.ics.cache
+*.bak
+*.tmp
 logs/
 
 # --- Python ---

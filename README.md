@@ -21,31 +21,50 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 
 ## Features
 
+- **Settings panel in your browser**: add calendar links, decide who sees what, and preview every audience's exact view. Works from any device on your Tailscale network (Mac, Windows, phone); never exposed publicly.
 - **Any number of calendars** from Google, Outlook / Microsoft 365, iCloud, or anything else that publishes an ICS feed.
 - **Five detail levels**, set per audience *and* per calendar: `full`, `title`, `label`, `busy`, `hidden`.
 - **Time windows**: show an audience only certain days and hours (e.g. Mon–Fri 8:00–18:00).
 - **Per-event overrides**: put `#private` in an event to make it "Busy" for everyone, or `#hide` to hide it. Events marked Private in Outlook/Google are treated as `#private` automatically.
-- **Optional passwords** per audience (Argon2-hashed, rate-limited, 30-day sign-in).
+- **Optional passwords** per audience (Argon2-hashed, rate-limited, 30-day sign-in), and one-click "new link" to cut off access.
 - **Excel download** of any visible week, and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
 - Recurring events, moved/cancelled instances, all-day and overnight events, and daylight-saving changes all handled.
-- No JavaScript, no tracking, no database. One Python process.
+- Runs on Windows, macOS or Linux. One Python process, no database, no tracking.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/admin-sharing.png" alt="Settings panel: who sees what, calendar by audience"></td>
+<td><img src="docs/admin-preview.png" alt="Settings panel: previewing exactly what coworkers see"></td>
+</tr>
+<tr>
+<td><sub>Who sees what: one dropdown per calendar and audience</sub></td>
+<td><sub>Preview: the exact page an audience gets, before you share it</sub></td>
+</tr>
+</table>
+
+## How it fits together
+
+```
+                         ┌──────────────── your always-on PC ────────────────┐
+Google  ─┐               │                                                   │
+Outlook ─┼── ICS feeds ──►  Glimpse  ── :8000 public pages ── Tailscale Funnel ──► anyone with a link
+iCloud  ─┘               │           ── :8001 settings     ── Tailscale Serve  ──► only your devices
+                         └───────────────────────────────────────────────────┘
+```
+
+- **Public pages** (port 8000) are what you share. Tailscale **Funnel** puts them on the internet at `https://<pc>.<tailnet>.ts.net`.
+- **The settings panel** (port 8001) is only published with Tailscale **Serve**, which is reachable from devices signed in to *your* tailnet and nobody else, at `https://<pc>.<tailnet>.ts.net:8443`. It also needs its own admin password, and can be limited to specific Tailscale accounts.
+- Both listen on `127.0.0.1` only, so nothing on your router is opened.
 
 ## How privacy works
-
-```
-Google ─┐
-Outlook ─┼─► fetch + cache ─► expand recurrences ─► APPLY POLICY ─► render HTML / Excel / ICS ─► tunnel ─► viewer
-iCloud ─┘        (your PC)                          (per audience)
-```
 
 - **Filtering happens on the server, before rendering.** If an audience may not see a title, the title is never put in the HTML, the Excel file, or the feed. There's nothing hidden "in the page" to dig out.
 - **Busy blocks are anonymous**: no calendar name, no colour, no original event ID. Overlapping busy blocks are merged, so viewers can't count your meetings.
 - **Overrides only reduce detail**, never increase it.
-- **Feed links stay on your PC** in `.env`. They're never logged (even in error messages) and the on-disk cache uses hashed file names.
+- **Feed links stay on your PC** in `.env` (owner-only file permissions). The panel shows them masked; they're never logged, even in error messages, and the on-disk cache uses hashed file names.
 - **Unguessable links**: each audience's address contains a random 128-bit slug. Pages send `noindex`, `no-store`, `no-referrer` and a strict Content-Security-Policy.
-- Glimpse listens on `127.0.0.1` only. The outside world reaches it through a tunnel (Tailscale Funnel or Cloudflare Tunnel), so no router ports are opened.
 
-The test suite checks these rules directly, e.g. that no forbidden word appears anywhere in a coworker's HTML, Excel file or ICS feed.
+The test suite checks these rules directly, e.g. that no forbidden word appears anywhere in a coworker's HTML, Excel file or ICS feed, and that the panel never prints a feed link.
 
 ## Try the demo (2 minutes)
 
@@ -56,7 +75,7 @@ git clone https://github.com/<you>/glimpse.git
 cd glimpse
 python -m venv .venv
 .venv/bin/pip install -e .            # Windows: .venv\Scripts\pip install -e .
-.venv/bin/glimpse -c examples/demo/config.yaml serve
+.venv/bin/glimpse -c examples/demo/config.yaml serve --no-admin
 ```
 
 Then open:
@@ -64,23 +83,73 @@ Then open:
 - Coworker view (no password): <http://127.0.0.1:8000/a/demo-coworker-link-00>
 - Partner view (password `demo-password`): <http://127.0.0.1:8000/a/demo-partner-link-000>
 
-## Set it up for real (Windows)
+## Set it up
 
-### 1. Install
+You need [Python 3.11+](https://www.python.org/downloads/) and [Tailscale](https://tailscale.com/download) (free Personal plan) on the computer that will host Glimpse, and Tailscale on any device you want to edit settings from.
+
+### 1. Install (on the host)
+
+**Windows** (PowerShell, in the folder you cloned or unzipped):
 
 ```powershell
-git clone https://github.com/<you>/glimpse.git
-cd glimpse
 powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1
 ```
 
-This creates `.venv`, installs Glimpse, and creates `config.yaml` and `.env` (both git-ignored) with a fresh secret key.
+**macOS / Linux:**
 
-On macOS/Linux: `python3 -m venv .venv && .venv/bin/pip install -e .`, then copy `config.example.yaml` → `config.yaml` and `.env.example` → `.env`, and set `GLIMPSE_SECRET_KEY` with `glimpse new-secret`.
+```bash
+./scripts/unix/setup.sh
+```
 
-### 2. Get your feed links
+This creates `.venv`, installs Glimpse, and on first run creates `config.yaml` and `.env` (both git-ignored), asking you to choose a **settings-panel password** (10+ characters).
 
-Each calendar has a private link that apps can read. Paste each one into `.env`, **never** into `config.yaml`. Treat them like passwords.
+### 2. Put it on Tailscale
+
+**Windows:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\tailscale-setup.ps1
+```
+
+**macOS / Linux** (or by hand on Windows):
+
+```bash
+tailscale funnel --bg 8000                                  # public share links
+tailscale serve --bg --https=8443 http://127.0.0.1:8001     # settings panel, your devices only
+.venv/bin/glimpse set-base-url https://<this-pc>.<tailnet>.ts.net
+```
+
+The first Funnel command may open a browser to approve Funnel and HTTPS for your tailnet. Both settings are remembered by Tailscale across reboots.
+
+### 3. Start it automatically
+
+| Host | Command | Notes |
+| --- | --- | --- |
+| Windows | `scripts\windows\install-task.ps1` (PowerShell **as administrator**) | Starts at boot, even before you log in; restarts if it stops; logs to `logs\glimpse.log`. Undo with `uninstall-task.ps1`. |
+| macOS | `./scripts/unix/install-macos.sh` | launchd agent, starts at login. Undo with `--uninstall`. |
+| Linux | `./scripts/unix/install-linux.sh` | systemd user service. Undo with `--uninstall`. |
+
+### 4. Open the settings panel from any device
+
+On any computer or phone signed in to your tailnet, open:
+
+```
+https://<host-name>.<tailnet>.ts.net:8443
+```
+
+(On the host itself, `http://127.0.0.1:8001` works too.) Sign in with the admin password, then:
+
+1. **Calendars → Add a calendar.** Paste a feed link, press **Test link** to check it, then **Add calendar**. The page explains where each provider keeps its link (also below).
+2. **Who sees what → New audience**, e.g. "Partner" starting at `full`, "Coworkers" starting at `busy`.
+3. In the grid, choose a level for each calendar and audience. Open an audience to set **days and hours**, a **password**, how many weeks ahead they can browse, and whether Excel/subscriptions are allowed.
+4. **Preview** shows exactly what each audience will see. "Everything" shows all calendars, for you only.
+5. **Overview** lists every share link with a Copy button.
+
+Every change is checked before it's saved, takes effect immediately (no restart), and the previous `config.yaml`/`.env` are kept as `.bak`.
+
+### Getting your feed links
+
+Each calendar has a private link that apps can read. Treat these like passwords.
 
 | Provider | Where to find the link |
 | --- | --- |
@@ -90,102 +159,50 @@ Each calendar has a private link that apps can read. Paste each one into `.env`,
 
 Publish with full details. Glimpse does the filtering, so it needs the full data to work with. Work and school accounts sometimes disable these options; if so, ask your IT admin.
 
-If a link ever leaks, reset it at the source: Google has a **Reset** button, Outlook lets you unpublish and republish, and iCloud lets you turn public sharing off and on.
+If a link ever leaks, reset it at the source: Google has a **Reset** button, Outlook lets you unpublish and republish, and iCloud lets you turn public sharing off and on. Then paste the new link under **Calendars → Edit**.
 
-### 3. Describe your calendars and audiences
+### Sharing and revoking
 
-Edit `config.yaml`. The [example](config.example.yaml) is commented line by line. The key ideas:
+Send the link and the password through different channels (e.g. link by email, password by text). To cut someone off, open their audience and press **Make a new link** (and change the password). The old link and every existing sign-in stop working at once.
 
-```yaml
-calendars:
-  personal: { name: Personal, url: ${GOOGLE_PERSONAL_ICS} }
-  lab:      { name: Lab,      url: ${OUTLOOK_LAB_ICS} }
-  classes:  { name: Classes,  url: ${OUTLOOK_CLASSES_ICS}, label: Class }
-
-audiences:
-  coworkers:
-    slug: ${COWORKER_SLUG}
-    default: busy                    # any calendar not listed below
-    hours: { days: [mon, tue, wed, thu, fri], start: "08:00", end: "18:00" }
-    calendars:
-      lab: title                     # show titles from the lab calendar
-      classes: label                 # show "Class" instead of the course name
-```
+## Detail levels
 
 | Level | The viewer sees |
 | --- | --- |
 | `full` | title, time, location, notes |
 | `title` | title and time |
-| `label` | the calendar's `label` (e.g. "Class") and time |
+| `label` | the calendar's label (e.g. "Class") and time |
 | `busy` | an anonymous "Busy" block |
 | `hidden` | nothing |
 
-Then fill in the rest of `.env`:
+## Editing config by hand (optional)
 
-```powershell
-.venv\Scripts\glimpse new-slug        # run once per audience, paste into .env
-.venv\Scripts\glimpse hash-password   # for each password-protected audience
-```
-
-Put password hashes in **single quotes** in `.env` (they contain `$`).
-
-### 4. Check it
-
-```powershell
-.venv\Scripts\glimpse check                       # validates config, fetches every feed
-.venv\Scripts\glimpse preview --audience coworkers # prints exactly what coworkers will see
-```
-
-### 5. Put it online with Tailscale Funnel (free)
-
-1. Install [Tailscale](https://tailscale.com/download) on the PC and sign in (the free Personal plan is enough).
-2. In a terminal: `tailscale funnel --bg 8000` and approve Funnel when asked.
-3. Your public address is `https://<pc-name>.<tailnet>.ts.net`. Put it in `.env` as `GLIMPSE_BASE_URL`.
-
-Prefer Cloudflare? A Cloudflare Tunnel pointed at `http://127.0.0.1:8000` works the same way (it needs a domain you own on Cloudflare).
-
-### 6. Start it automatically with Windows
-
-From PowerShell **run as administrator**, in the repo folder:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\install-task.ps1
-```
-
-This registers a Task Scheduler task that starts Glimpse at boot (even before you log in), restarts it if it stops, and writes output to `logs\glimpse.log`. Remove it with `scripts\windows\uninstall-task.ps1`.
-
-### 7. Share
-
-```powershell
-.venv\Scripts\glimpse links
-```
-
-prints each audience's page link and calendar-subscription link. Send the link and the password through different channels (e.g. link by email, password by text).
-
-**To revoke someone's access**, change that audience's slug (and password) in `.env` and restart Glimpse. Old links and sign-ins stop working immediately.
+Everything the panel does is stored in `config.yaml`, with secrets in `.env` referenced as `${NAME}`. Hand edits are fine; a running Glimpse picks them up on its own, and if an edit is invalid it keeps the previous settings and shows the error in the panel. See the commented [config.example.yaml](config.example.yaml).
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `glimpse serve` | run the web app |
+| `glimpse serve` | run the public pages (8000) and settings panel (8001); `--no-admin` to skip the panel |
+| `glimpse init` | create `config.yaml` + `.env` for a fresh setup |
+| `glimpse admin-password` | set or reset the settings-panel password |
+| `glimpse set-base-url URL` | set the public address used in share links |
 | `glimpse check` | validate config and fetch every feed; exit code 0 = all OK |
 | `glimpse preview -a NAME [-w YYYY-MM-DD]` | print what an audience sees for a week |
 | `glimpse links` | print each audience's links |
-| `glimpse new-slug` / `new-secret` | generate random values for `.env` |
-| `glimpse hash-password` | hash a password for `.env` |
+| `glimpse new-slug` / `new-secret` / `hash-password` | generate values for hand-edited configs |
 
 All commands take `-c path/to/config.yaml` (default `./config.yaml`) and `-e path/to/.env` (default: beside the config).
 
 ## Good to know
 
-- Feeds refresh every `refresh_minutes` (default 10). Google and Outlook may themselves update their published feeds only every few minutes to hours, so very recent changes can take a while to show up.
-- If a feed fails, Glimpse keeps showing the last good copy and the page footer notes that calendars may be out of date.
-- All-day events at the `busy` level are hidden by default (they're usually birthdays and reminders). Set `show_all_day_busy: true` to show them.
+- Feeds refresh every 10 minutes by default (Settings). Google and Outlook may themselves update their published feeds only every few minutes to hours, so very recent changes can take a while to show up.
+- If a feed fails, Glimpse keeps showing the last good copy; the Overview shows which calendar has a problem.
+- All-day events at the `busy` level are hidden by default (they're usually birthdays and reminders). There's a checkbox per audience to show them.
 - Events marked "show as free" never appear as Busy, only at `title`/`full`.
-- The calendar-subscription link works without the password (calendar apps can't sign in), so treat it like the password. Turn it off for an audience with `allow_ics: false`.
-- Testing locally over `http://127.0.0.1` works in Chrome and Edge. If another browser keeps returning you to the login page, it's refusing the secure cookie over plain http; use Chrome/Edge or go through your tunnel's https address.
-- Login rate limiting is per client IP when your tunnel forwards it (`X-Forwarded-For`), and per audience in any case.
+- The calendar-subscription link works without the password (calendar apps can't sign in), so treat it like the password, or turn subscriptions off for that audience.
+- Forgot the admin password? On the host, run `glimpse admin-password`.
+- Testing over plain `http://127.0.0.1` works in Chrome and Edge. If another browser keeps returning you to a login page, it's refusing the secure cookie over plain http; use the `https://…ts.net` address instead.
 
 ## Development
 

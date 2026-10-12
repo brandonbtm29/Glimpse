@@ -114,30 +114,141 @@ def cmd_links(args: argparse.Namespace) -> None:
         print(f"  login  {'password required' if aud.password_hash else 'link only'}")
 
 
+def _ask_new_password(minimum: int, given: str | None = None) -> str:
+    if given is not None:
+        pw = given
+    else:
+        pw = getpass.getpass("New password: ")
+        if pw != getpass.getpass("Repeat it: "):
+            print("error: passwords did not match", file=sys.stderr)
+            sys.exit(1)
+    if len(pw) < minimum:
+        print(f"error: use at least {minimum} characters", file=sys.stderr)
+        sys.exit(1)
+    return pw
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    from argon2 import PasswordHasher
+
+    from .config import ConfigError
+    from .store import init_files
+
+    if args.config.exists():
+        print(f"{args.config} already exists; nothing to do. (Set the admin password with `admin-password`.)")
+        return
+    print("Creating a new Glimpse setup. Choose a password for the settings panel (10+ characters).")
+    pw = _ask_new_password(10, args.password)
+    try:
+        init_files(args.config, args.env, PasswordHasher().hash(pw))
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    print(f"Created {args.config} and {args.env or args.config.with_name('.env')}.")
+    print("Next: run `glimpse serve` and open http://127.0.0.1:8001 to add calendars.")
+
+
+def cmd_admin_password(args: argparse.Namespace) -> None:
+    from argon2 import PasswordHasher
+
+    from .config import ConfigError
+    from .store import ConfigStore
+
+    store = ConfigStore(args.config, args.env)
+    pw = _ask_new_password(10, args.password)
+    h = PasswordHasher().hash(pw)
+    try:
+        store.update(
+            lambda d: d.set_secret(d.section("admin"), "password_hash", h, "GLIMPSE_ADMIN_PASSWORD_HASH")
+        )
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    print("Admin password set. A running Glimpse picks it up automatically.")
+
+
+def cmd_set_base_url(args: argparse.Namespace) -> None:
+    from .config import ConfigError
+    from .store import ConfigStore
+
+    url = args.url.strip().rstrip("/")
+    if not url.startswith(("https://", "http://")):
+        print("error: the address should start with https://", file=sys.stderr)
+        sys.exit(2)
+    try:
+        ConfigStore(args.config, args.env).update(lambda d: d.section("server").__setitem__("base_url", url))
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
+    print(f"Public address set to {url}")
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
+    import asyncio
+
     import uvicorn
 
+    from .store import ConfigStore
     from .web.app import create_app
+    from .web.runtime import Runtime
 
     cfg = _load(args)
+    store = ConfigStore(args.config, args.env)
+    rt = Runtime(cfg, store)
     host = args.host or cfg.server.host
     port = args.port or cfg.server.port
-    if host not in ("127.0.0.1", "localhost", "::1"):
-        print(
-            f"warning: listening on {host}; anyone on that network can reach Glimpse directly. "
-            "Use 127.0.0.1 with a tunnel instead.",
-            file=sys.stderr,
+    for h in (host, cfg.admin.host):
+        if h not in ("127.0.0.1", "localhost", "::1"):
+            print(
+                f"warning: listening on {h}; anyone on that network can reach it directly. "
+                "Use 127.0.0.1 with Tailscale instead.",
+                file=sys.stderr,
+            )
+
+    servers = [
+        uvicorn.Server(
+            uvicorn.Config(
+                create_app(cfg, glimpse=rt.glimpse, background_refresh=False),
+                host=host,
+                port=port,
+                log_level="warning",
+                access_log=False,
+                proxy_headers=cfg.server.trust_proxy_headers,
+                forwarded_allow_ips="127.0.0.1",
+            )
         )
-    app = create_app(cfg)
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        log_level="warning",
-        access_log=False,
-        proxy_headers=cfg.server.trust_proxy_headers,
-        forwarded_allow_ips="127.0.0.1",
-    )
+    ]
+    log = logging.getLogger("glimpse")
+    if cfg.admin.enabled and not args.no_admin:
+        from .web.admin import create_admin_app
+
+        servers.append(
+            uvicorn.Server(
+                uvicorn.Config(
+                    create_admin_app(rt),
+                    host=cfg.admin.host,
+                    port=args.admin_port or cfg.admin.port,
+                    log_level="warning",
+                    access_log=False,
+                    proxy_headers=True,
+                    forwarded_allow_ips="127.0.0.1",
+                )
+            )
+        )
+        if not cfg.admin.password_hash:
+            log.warning("settings panel is locked until you run `glimpse admin-password`")
+    log.info("public pages on http://%s:%s", host, port)
+    if len(servers) > 1:
+        log.info("settings panel on http://%s:%s", cfg.admin.host, args.admin_port or cfg.admin.port)
+
+    async def run() -> None:
+        refresher = asyncio.create_task(rt.refresh_loop())
+        try:
+            await asyncio.gather(*(s.serve() for s in servers))
+        finally:
+            refresher.cancel()
+
+    asyncio.run(run())
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -148,10 +259,24 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("-e", "--env", default=None, type=Path, help="path to .env (default: beside config)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("serve", help="run the web app")
+    s = sub.add_parser("serve", help="run the public pages and the settings panel")
     s.add_argument("--host")
     s.add_argument("--port", type=int)
+    s.add_argument("--admin-port", type=int)
+    s.add_argument("--no-admin", action="store_true", help="don't start the settings panel")
     s.set_defaults(fn=cmd_serve)
+
+    s = sub.add_parser("init", help="create config.yaml and .env for a fresh setup")
+    s.add_argument("--password", help=argparse.SUPPRESS)
+    s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("set-base-url", help="set the public address used in share links")
+    s.add_argument("url")
+    s.set_defaults(fn=cmd_set_base_url)
+
+    s = sub.add_parser("admin-password", help="set the settings-panel password")
+    s.add_argument("--password", help=argparse.SUPPRESS)
+    s.set_defaults(fn=cmd_admin_password)
 
     s = sub.add_parser("preview", help="print what an audience sees for a week")
     s.add_argument("--audience", "-a", required=True)

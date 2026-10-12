@@ -11,6 +11,7 @@ Things that count as security issues here:
 - Any way for a viewer to see more than their audience's level allows (in HTML, Excel, ICS, headers, or timing)
 - Any way to reach an audience's page without its slug, or past its password
 - Feed URLs or other secrets appearing in logs, error pages, the cache folder name, or responses
+- Any way to reach or change the settings panel without the admin password
 
 ## Hardening already in place
 
@@ -21,3 +22,7 @@ Things that count as security issues here:
 - `noindex`, `no-store`, `no-referrer`, strict CSP with no scripts, `frame-ancestors 'none'`
 - Server binds to `127.0.0.1`; public access goes through a tunnel
 - Feed URLs are redacted from every log line and error message
+- The settings panel is a separate server on 127.0.0.1:8001, meant to be published only with `tailscale serve`
+  (tailnet-only), never Funnel. It requires an admin password (Argon2), uses SameSite=Strict cookies plus a
+  CSRF token on every change, can be limited to named Tailscale logins, and never displays feed links in full
+- Every settings change is validated before anything is written; writes are atomic with `.bak` backups

@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+{% block title %}Who sees what · Glimpse settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Who sees what</h1>
+    <p class="muted">Each column is an audience with its own link. Pick how much of each calendar they see.</p>
+  </div>
+</header>
+
+<ul class="levels-key">
+  {% for lv in LEVELS %}<li><span class="lvl lvl-{{ lv }}">{{ lv }}</span> {{ LEVEL_HELP[lv] }}</li>{% endfor %}
+</ul>
+
+{% if cfg.audiences %}
+<form method="post" action="/sharing" class="panel matrix-wrap">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="scroll-x">
+  <table class="matrix">
+    <thead>
+      <tr>
+        <th scope="col">Calendar</th>
+        {% for aid, aud in cfg.audiences.items() %}
+        <th scope="col">
+          <a href="/audiences/{{ aid }}">{{ aud.title }}</a>
+          <span class="tag {{ 'lock' if aud.password_hash else 'open' }}">{{ 'Password' if aud.password_hash else 'Link only' }}</span>
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in feeds %}
+      <tr>
+        <th scope="row"><span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}</th>
+        {% for aid, aud in cfg.audiences.items() %}
+        {% set cur = aud.calendars.get(f.id) %}
+        <td>
+          <select name="lvl__{{ aid }}__{{ f.id }}" class="lvl-select" aria-label="{{ f.cal.name }} for {{ aud.title }}">
+            <option value="default" {% if cur is none %}selected{% endif %}>Default ({{ aud.default.value }})</option>
+            {% for lv in LEVELS %}<option value="{{ lv }}" {% if cur is not none and cur.value == lv %}selected{% endif %}>{{ lv }}</option>{% endfor %}
+          </select>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      <tr class="defaults">
+        <th scope="row">Default<span class="hint">for calendars set to &ldquo;Default&rdquo; and any you add later</span></th>
+        {% for aid, aud in cfg.audiences.items() %}
+        <td>
+          <select name="default__{{ aid }}" aria-label="Default for {{ aud.title }}">
+            {% for lv in LEVELS %}<option value="{{ lv }}" {% if aud.default.value == lv %}selected{% endif %}>{{ lv }}</option>{% endfor %}
+          </select>
+        </td>
+        {% endfor %}
+      </tr>
+      <tr class="meta">
+        <th scope="row">Hours</th>
+        {% for aid, aud in cfg.audiences.items() %}
+        <td class="muted small">{% if aud.hours %}{% for d in aud.hours.days %}{{ DAY_LABELS[d] }}{{ ', ' if not loop.last }}{% endfor %}<br>{{ fmt_time(aud.hours.start) }}–{{ fmt_time(aud.hours.end) }}{% else %}Any time{% endif %} · <a href="/audiences/{{ aid }}">edit</a></td>
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="actions">
+    <button type="submit">Save</button>
+    <a class="button secondary" href="/preview">Preview</a>
+  </div>
+  <p class="fine">Events tagged <code>{{ cfg.overrides.private_tag }}</code> show as Busy at most, and <code>{{ cfg.overrides.hide_tag }}</code> hides them, for every audience.</p>
+</form>
+{% endif %}
+
+<section class="panel">
+  <h2>New audience</h2>
+  <p class="muted">An audience is a group of people who share one link, e.g. &ldquo;Partner&rdquo;, &ldquo;Lab group&rdquo; or &ldquo;Family&rdquo;.</p>
+  <form method="post" action="/audiences/add" class="form inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name
+      <input type="text" name="title" placeholder="Lab group" maxlength="60" required>
+    </label>
+    <label>Start everyone at
+      <select name="default">
+        {% for lv in LEVELS %}<option value="{{ lv }}" {% if lv == 'busy' %}selected{% endif %}>{{ lv }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Create</button>
+  </form>
+</section>
+{% endblock %}

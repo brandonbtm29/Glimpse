@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% block title %}Set an admin password · Glimpse{% endblock %}
+{% block shell %}
+<main class="card-page">
+  <div class="card">
+    <h1>One step first</h1>
+    <p class="muted">For safety, the settings panel stays locked until an admin password is set on the computer running Glimpse. Open a terminal there, in the Glimpse folder, and run:</p>
+    <pre class="code">.venv\Scripts\glimpse admin-password</pre>
+    <p class="fine">On macOS or Linux: <code>.venv/bin/glimpse admin-password</code>. Then reload this page.</p>
+  </div>
+</main>
+{% endblock %}

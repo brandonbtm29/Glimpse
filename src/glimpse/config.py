@@ -7,6 +7,7 @@ YAML and filled from environment variables / a ``.env`` file at load time, so
 
 from __future__ import annotations
 
+import copy
 import os
 import re
 from datetime import time
@@ -76,6 +77,16 @@ class HoursCfg(_Strict):
     days: list[str] = Field(default_factory=lambda: WEEKDAYS[:5])
     start: time = time(8, 0)
     end: time = time(18, 0)
+
+    @field_validator("start", "end", mode="before")
+    @classmethod
+    def _yaml_sexagesimal(cls, v: Any) -> Any:
+        # YAML 1.1 reads an unquoted 8:00 as the number 480 (base-60). Undo that.
+        if isinstance(v, int) and not isinstance(v, bool):
+            if v == 1440:
+                return time(23, 59)
+            return time(v // 60, v % 60)
+        return v
 
     @field_validator("days")
     @classmethod
@@ -151,15 +162,38 @@ class ServerCfg(_Strict):
     trust_proxy_headers: bool = True  # read client IP from X-Forwarded-For (tunnel)
 
 
+class AdminCfg(_Strict):
+    """The settings panel. Bound to localhost; reach it through `tailscale serve`."""
+
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8001
+    password_hash: str | None = None  # set with `glimpse admin-password`
+    # If non-empty, only these Tailscale logins may use the panel (checked via the
+    # Tailscale-User-Login header that `tailscale serve` adds and cannot be spoofed through it).
+    allowed_tailscale_users: list[str] = Field(default_factory=list)
+    secure_cookies: bool = True
+
+    @field_validator("password_hash")
+    @classmethod
+    def _hash(cls, v: str | None) -> str | None:
+        if v is None or not v.strip() or v.strip().lower() in ("null", "none"):
+            return None
+        if not v.startswith("$argon2"):
+            raise ValueError("admin.password_hash must be an Argon2 hash (run `glimpse admin-password`)")
+        return v
+
+
 class AppConfig(_Strict):
     timezone: str = "America/New_York"
     refresh_minutes: int = Field(default=10, ge=1, le=1440)
     week_starts: Literal["monday", "sunday"] = "monday"
     cache_dir: str = "cache"
     server: ServerCfg
+    admin: AdminCfg = Field(default_factory=AdminCfg)
     overrides: OverridesCfg = Field(default_factory=OverridesCfg)
-    calendars: dict[str, CalendarCfg]
-    audiences: dict[str, AudienceCfg]
+    calendars: dict[str, CalendarCfg] = Field(default_factory=dict)
+    audiences: dict[str, AudienceCfg] = Field(default_factory=dict)
 
     @field_validator("timezone")
     @classmethod
@@ -172,8 +206,6 @@ class AppConfig(_Strict):
 
     @model_validator(mode="after")
     def _cross_refs(self) -> AppConfig:
-        if not self.calendars:
-            raise ValueError("define at least one calendar")
         slugs: dict[str, str] = {}
         for aid, aud in self.audiences.items():
             for cid in aud.calendars:
@@ -213,48 +245,34 @@ def _substitute(node: Any, env: dict[str, str], missing: set[str]) -> Any:
     return node
 
 
-def load_config(path: str | os.PathLike[str], env_file: str | os.PathLike[str] | None = None) -> AppConfig:
-    """Read ``config.yaml``, fill ``${VAR}`` references, and validate.
+def read_env_file(env_path: Path) -> dict[str, str]:
+    if not env_path.is_file():
+        return {}
+    values = dotenv_values(env_path, interpolate=False, encoding="utf-8-sig")
+    return {k: v for k, v in values.items() if v is not None}
 
-    Values come from the real environment first, then from ``env_file``
-    (default: ``.env`` beside the config file).
-    """
-    cfg_path = Path(path)
-    if not cfg_path.is_file():
-        raise ConfigError(f"config file not found: {cfg_path}")
-    try:
-        raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8-sig")) or {}  # -sig: Notepad BOMs
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{cfg_path}: invalid YAML: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ConfigError(f"{cfg_path}: the top level must be a mapping")
 
-    env_path = Path(env_file) if env_file else cfg_path.with_name(".env")
-    env: dict[str, str] = {}
-    if env_path.is_file():
-        env.update(
-            {
-                k: v
-                for k, v in dotenv_values(env_path, interpolate=False, encoding="utf-8-sig").items()
-                if v is not None
-            }
-        )
-    env.update(os.environ)
-
+def build_config(
+    raw: dict[str, Any], env: dict[str, str], base_dir: Path, source: str = "config"
+) -> AppConfig:
+    """Validate an already-parsed config dict against ``env`` (no file access)."""
     missing: set[str] = set()
-    filled = _substitute(raw, env, missing)
+    filled = _substitute(copy.deepcopy(raw), env, missing)
     if missing:
-        raise ConfigError("missing values for " + ", ".join(sorted(missing)) + f" (add them to {env_path})")
+        raise ConfigError("missing values for " + ", ".join(sorted(missing)) + " (add them to .env)")
 
     # Relative cache_dir / file feeds resolve beside the config file.
     filled.setdefault("cache_dir", "cache")
     if not Path(filled["cache_dir"]).is_absolute():
-        filled["cache_dir"] = str(cfg_path.parent / filled["cache_dir"])
+        filled["cache_dir"] = str(base_dir / filled["cache_dir"])
     for cal in (filled.get("calendars") or {}).values():
         if isinstance(cal, dict) and isinstance(cal.get("url"), str):
             url = cal["url"]
             if "://" not in url and not Path(url).is_absolute():
-                cal["url"] = str((cfg_path.parent / url).resolve())
+                cal["url"] = str((base_dir / url).resolve())
+    for key in ("calendars", "audiences"):
+        if filled.get(key) is None:
+            filled[key] = {}
 
     try:
         return AppConfig.model_validate(filled)
@@ -263,4 +281,34 @@ def load_config(path: str | os.PathLike[str], env_file: str | os.PathLike[str] |
         for err in exc.errors():
             where = ".".join(str(p) for p in err["loc"]) or "(top level)"
             lines.append(f"  {where}: {err['msg']}")
-        raise ConfigError(f"{cfg_path} has problems:\n" + "\n".join(lines)) from None
+        raise ConfigError(f"{source} has problems:\n" + "\n".join(lines)) from None
+
+
+def read_raw_config(cfg_path: Path) -> dict[str, Any]:
+    if not cfg_path.is_file():
+        raise ConfigError(f"config file not found: {cfg_path}")
+    try:
+        raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8-sig")) or {}  # -sig: Notepad BOMs
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{cfg_path}: invalid YAML: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{cfg_path}: the top level must be a mapping")
+    return raw
+
+
+def default_env_path(cfg_path: Path) -> Path:
+    return cfg_path.with_name(".env")
+
+
+def load_config(path: str | os.PathLike[str], env_file: str | os.PathLike[str] | None = None) -> AppConfig:
+    """Read ``config.yaml``, fill ``${VAR}`` references, and validate.
+
+    Values come from the real environment first, then from ``env_file``
+    (default: ``.env`` beside the config file).
+    """
+    cfg_path = Path(path)
+    raw = read_raw_config(cfg_path)
+    env_path = Path(env_file) if env_file else default_env_path(cfg_path)
+    env = read_env_file(env_path)
+    env.update(os.environ)
+    return build_config(raw, env, cfg_path.parent, source=str(cfg_path))

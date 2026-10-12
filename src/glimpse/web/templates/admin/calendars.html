@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+{% block title %}Calendars · Glimpse settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Calendars</h1>
+    <p class="muted">Every calendar Glimpse reads. Links are stored only on this PC and shown masked.</p>
+  </div>
+</header>
+
+{% if feeds %}
+<section class="panel">
+  <table class="table">
+    <thead><tr><th>Name</th><th>Label</th><th>Link</th><th>Status</th><th class="num">This week</th><th></th></tr></thead>
+    <tbody>
+    {% for f in feeds %}
+      <tr>
+        <td><span class="dot" style="--ev: {{ f.color }}"></span><strong>{{ f.cal.name }}</strong></td>
+        <td class="muted">{{ f.cal.label or '–' }}</td>
+        <td class="mono muted">{{ f.provider }} · {{ f.masked }}</td>
+        <td>{% if f.status == 'ok' %}<span class="status ok">OK</span>{% elif f.status == 'error' %}<span class="status bad" title="{{ f.error }}">Problem</span>{% else %}<span class="status wait">Waiting</span>{% endif %}</td>
+        <td class="num">{{ f.count }}</td>
+        <td class="right"><a class="button secondary small" href="/calendars/{{ f.id }}">Edit</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Add a calendar</h2>
+  <details class="help">
+    <summary>Where do I find the feed link?</summary>
+    <dl>
+      <dt>Google Calendar</dt>
+      <dd>Settings &rarr; pick the calendar under &ldquo;Settings for my calendars&rdquo; &rarr; Integrate calendar &rarr; <b>Secret address in iCal format</b>.</dd>
+      <dt>Outlook / Microsoft 365</dt>
+      <dd>Settings &rarr; Calendar &rarr; Shared calendars &rarr; <b>Publish a calendar</b> &rarr; choose the calendar and &ldquo;Can view all details&rdquo; &rarr; Publish &rarr; copy the <b>ICS</b> link.</dd>
+      <dt>iCloud</dt>
+      <dd>Calendar on Mac &rarr; hover the calendar &rarr; Share &rarr; tick <b>Public Calendar</b> &rarr; copy the link. <code>webcal://</code> links are fine.</dd>
+    </dl>
+    <p class="fine">Publish with full details. Glimpse does the hiding, per audience.</p>
+  </details>
+
+  {% if test %}
+    {% if test.ok %}
+    <p class="flash">Link works: {{ test.provider }} calendar{% if test.name %} &ldquo;{{ test.name }}&rdquo;{% endif %} with {{ test.events }} event{{ '' if test.events == 1 else 's' }} in the next 4 weeks.</p>
+    {% else %}
+    <p class="error">{{ test.error }}</p>
+    {% endif %}
+  {% endif %}
+
+  <form method="post" action="/calendars/add" class="form grid2">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="span2">Feed link
+      <input type="text" name="url" value="{{ form.url }}" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" autocomplete="off" spellcheck="false" required>
+    </label>
+    <label>Name
+      <input type="text" name="name" value="{{ form.name }}" placeholder="Personal" maxlength="60">
+    </label>
+    <label><span>Label <span class="muted">(optional)</span></span>
+      <input type="text" name="label" value="{{ form.label }}" placeholder="e.g. Class" maxlength="40">
+      <span class="hint">Shown instead of event titles to audiences set to &ldquo;label&rdquo;.</span>
+    </label>
+    <label>Colour
+      <input type="color" name="color" value="{{ form.color }}">
+    </label>
+    <div class="actions span2">
+      <button type="submit" formaction="/calendars/test" class="secondary">Test link</button>
+      <button type="submit">Add calendar</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

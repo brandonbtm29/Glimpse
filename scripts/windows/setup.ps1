@@ -3,8 +3,9 @@
   One-time setup of Glimpse on Windows.
 
 .DESCRIPTION
-  Creates a virtual environment in .venv, installs Glimpse, copies the example
-  config files (without overwriting yours), and fills in a fresh secret key.
+  Creates a virtual environment in .venv, installs Glimpse, and (on first run)
+  creates config.yaml + .env, asking you for a settings-panel password.
+  Safe to run again: it never overwrites your config.
 
   Run from the repository folder:
       powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1
@@ -31,29 +32,25 @@ if (-not (Test-Path ".venv")) {
     & ([scriptblock]::Create("$py -m venv .venv"))
 }
 $venvPy = Join-Path $Root ".venv\Scripts\python.exe"
+$glimpse = Join-Path $Root ".venv\Scripts\glimpse.exe"
 & $venvPy -m pip install --upgrade pip --quiet
 & $venvPy -m pip install -e . --quiet
 Write-Host "Installed Glimpse into .venv"
 
 if (-not (Test-Path "config.yaml")) {
-    Copy-Item "config.example.yaml" "config.yaml"
-    Write-Host "Created config.yaml (edit it to match your calendars)"
-}
-if (-not (Test-Path ".env")) {
-    Copy-Item ".env.example" ".env"
-    $secret = & (Join-Path $Root ".venv\Scripts\glimpse.exe") new-secret
-    (Get-Content ".env") -replace '^GLIMPSE_SECRET_KEY=.*$', "GLIMPSE_SECRET_KEY=$secret" | Set-Content ".env" -Encoding utf8
-    Write-Host "Created .env with a fresh secret key (add your feed links next)"
+    & $glimpse init
+    if ($LASTEXITCODE -ne 0) { throw "glimpse init failed" }
+} else {
+    Write-Host "config.yaml already exists; keeping it."
 }
 
 # Lock .env down to the current user only.
-icacls ".env" /inheritance:r /grant:r "$($env:USERNAME):(R,W)" | Out-Null
+if (Test-Path ".env") {
+    icacls ".env" /inheritance:r /grant:r "$($env:USERNAME):(R,W)" | Out-Null
+}
 
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  1. Paste your calendar feed links into .env"
-Write-Host "  2. .venv\Scripts\glimpse new-slug       (once per audience, paste into .env)"
-Write-Host "  3. .venv\Scripts\glimpse hash-password  (for each password-protected audience)"
-Write-Host "  4. .venv\Scripts\glimpse check"
-Write-Host "  5. .venv\Scripts\glimpse preview --audience coworkers"
-Write-Host "  6. scripts\windows\install-task.ps1     (start Glimpse automatically)"
+Write-Host "  1. scripts\windows\tailscale-setup.ps1   (public links + settings panel on your tailnet)"
+Write-Host "  2. scripts\windows\install-task.ps1      (start Glimpse with Windows; run as administrator)"
+Write-Host "  3. Open the settings panel and add your calendars."

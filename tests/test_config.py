@@ -73,6 +73,7 @@ def test_example_config_is_valid(tmp_path):
         "OUTLOOK_CLASSES_ICS=https://c\nICLOUD_FAMILY_ICS=webcal://d\n"
         "PARTNER_SLUG=" + "p" * 22 + "\nCOWORKER_SLUG=" + "c" * 22 + "\n"
         f"PARTNER_PW_HASH='{PasswordHasher().hash('x' * 10)}'\n"
+        f"GLIMPSE_ADMIN_PASSWORD_HASH='{PasswordHasher().hash('y' * 10)}'\n"
     )
     cfg = load_config(tmp_path / "config.yaml")
     assert set(cfg.audiences) == {"partner", "coworkers"}

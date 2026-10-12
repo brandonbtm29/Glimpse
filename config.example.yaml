@@ -17,6 +17,14 @@ server:
   base_url: ${GLIMPSE_BASE_URL}   # your public address, e.g. https://my-pc.tail1234.ts.net
   secret_key: ${GLIMPSE_SECRET_KEY}
 
+# The settings panel (http://127.0.0.1:8001). Publish it to your own devices with
+#   tailscale serve --bg --https=8443 http://127.0.0.1:8001
+# Set its password with `glimpse admin-password`.
+admin:
+  port: 8001
+  password_hash: ${GLIMPSE_ADMIN_PASSWORD_HASH}
+  allowed_tailscale_users: []       # e.g. [you@example.com] to limit it to your Tailscale login
+
 # ---------------------------------------------------------------------------
 # Calendars: one entry per feed. The key (left side) is the id you use below.
 #   name   shown in the legend and in full/title views
