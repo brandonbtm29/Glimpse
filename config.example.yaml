@@ -1,0 +1,86 @@
+# Glimpse configuration.
+#
+# Copy this file to config.yaml (which git ignores) and edit it.
+# Anything secret is written as ${NAME} and filled in from .env, so this file
+# never needs to contain a feed link, slug, password or key.
+#
+# Check your work any time with:   glimpse check
+# See what someone will see with:  glimpse preview --audience coworkers
+
+timezone: America/New_York        # any IANA time zone name
+refresh_minutes: 10               # how often feeds are re-downloaded
+week_starts: monday               # or sunday
+
+server:
+  host: 127.0.0.1                 # keep this: only the tunnel should reach Glimpse
+  port: 8000
+  base_url: ${GLIMPSE_BASE_URL}   # your public address, e.g. https://my-pc.tail1234.ts.net
+  secret_key: ${GLIMPSE_SECRET_KEY}
+
+# ---------------------------------------------------------------------------
+# Calendars: one entry per feed. The key (left side) is the id you use below.
+#   name   shown in the legend and in full/title views
+#   label  shown instead of the title at the `label` level (default: name)
+#   color  optional hex colour, e.g. "#2f9e44"
+# ---------------------------------------------------------------------------
+calendars:
+  personal:
+    name: Personal
+    url: ${GOOGLE_PERSONAL_ICS}
+  lab:
+    name: Lab
+    url: ${OUTLOOK_LAB_ICS}
+  classes:
+    name: Classes
+    label: Class
+    url: ${OUTLOOK_CLASSES_ICS}
+  family:
+    name: Family
+    url: ${ICLOUD_FAMILY_ICS}
+
+# ---------------------------------------------------------------------------
+# Per-event overrides. These only ever REDUCE detail, for every audience.
+#   Put "#private" in an event's title or notes -> shown as Busy at most.
+#   Put "#hide" in an event's title or notes    -> not shown to anyone.
+#   Events marked Private in Outlook/Google     -> shown as Busy at most.
+# ---------------------------------------------------------------------------
+overrides:
+  private_tag: "#private"
+  hide_tag: "#hide"
+  honor_private_flag: true
+
+# ---------------------------------------------------------------------------
+# Audiences: who sees what. Levels, most to least revealing:
+#   full    title, time, location, notes
+#   title   title and time
+#   label   the calendar's label (e.g. "Class") and time
+#   busy    an anonymous "Busy" block
+#   hidden  nothing
+# `default` applies to any calendar not listed under `calendars`.
+# ---------------------------------------------------------------------------
+audiences:
+  partner:
+    title: "My week"
+    slug: ${PARTNER_SLUG}
+    password_hash: ${PARTNER_PW_HASH}   # remove this line for a link-only page
+    default: full
+    weeks_ahead: 6                      # how far ahead they can browse
+    weeks_behind: 1
+    calendars:
+      lab: title
+
+  coworkers:
+    title: "Availability"
+    slug: ${COWORKER_SLUG}
+    password_hash: null                 # link only
+    default: busy
+    weeks_ahead: 3
+    weeks_behind: 0
+    hours: { days: [mon, tue, wed, thu, fri], start: "08:00", end: "18:00" }
+    show_all_day_busy: false            # all-day events at `busy` level are usually reminders
+    allow_excel: true
+    allow_ics: true                     # lets them subscribe in their own calendar app
+    calendars:
+      lab: title
+      classes: label
+      family: hidden

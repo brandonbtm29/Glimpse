@@ -1,0 +1,19 @@
+# Install once with:  pip install pre-commit && pre-commit install
+# Every commit is then scanned for secrets (feed links, keys) and linted.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: no-private-config
+        name: Block config.yaml / .env from being committed
+        entry: "Refusing to commit a private settings file (config.yaml or .env)."
+        language: fail
+        files: '^(config\.yaml|\.env)$'

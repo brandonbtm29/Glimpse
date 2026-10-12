@@ -1,0 +1,46 @@
+# Demo config: runs entirely from the local files in ./calendars.
+# Nothing here is secret, so values are written inline instead of in .env.
+#
+#   glimpse -c examples/demo/config.yaml serve
+#
+# Then open:
+#   Partner (password "demo-password"): http://127.0.0.1:8000/a/demo-partner-link-000
+#   Coworkers (no password):            http://127.0.0.1:8000/a/demo-coworker-link-00
+
+timezone: America/New_York
+refresh_minutes: 10
+week_starts: monday
+cache_dir: cache
+
+server:
+  secret_key: demo-secret-key-not-for-real-use-0000000000
+  secure_cookies: false          # demo runs on plain http://127.0.0.1
+  base_url: http://127.0.0.1:8000
+
+calendars:
+  personal: { name: Personal, url: calendars/personal.ics }
+  work:     { name: Work,     url: calendars/work.ics }
+  classes:  { name: Classes,  url: calendars/classes.ics, label: Class }
+  family:   { name: Family,   url: calendars/family.ics }
+
+audiences:
+  partner:
+    title: "Alex's week"
+    slug: demo-partner-link-000
+    password_hash: '$argon2id$v=19$m=65536,t=3,p=4$izUQE9xcTfSYDvtfrmOlRQ$bhU14YlB5iMuMK9/bqDRoWnQCeSBJmbdsmfT8fKbbkM'
+    default: full
+    weeks_ahead: 8
+    calendars:
+      work: title
+
+  coworkers:
+    title: "Alex — availability"
+    slug: demo-coworker-link-00
+    password_hash: null
+    default: busy
+    weeks_ahead: 3
+    hours: { days: [mon, tue, wed, thu, fri], start: "08:00", end: "18:00" }
+    calendars:
+      work: title
+      classes: label
+      family: hidden

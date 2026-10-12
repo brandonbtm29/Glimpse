@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "glimpse-calendar"
+version = "0.1.0"
+description = "Share a filtered, merged view of your Google, Outlook and iCloud calendars, with per-person detail levels and passwords."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Brandon T. McReynolds" }]
+keywords = ["calendar", "ics", "ical", "privacy", "availability", "self-hosted"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business :: Scheduling",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+    "icalendar>=6.0",
+    "recurring-ical-events>=3.0",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "Jinja2>=3.1",
+    "argon2-cffi>=23.1",
+    "itsdangerous>=2.1",
+    "openpyxl>=3.1",
+    "python-multipart>=0.0.9",
+    "tzdata>=2024.1", # Windows has no system time-zone database
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+glimpse = "glimpse.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/glimpse"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"] # asserts are fine in tests
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]

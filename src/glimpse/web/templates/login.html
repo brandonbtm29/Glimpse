@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ aud.title }}{% endblock %}
+{% block body %}
+<main class="card-page">
+  <form class="card" method="post" action="/a/{{ slug }}/login" autocomplete="on">
+    <h1>{{ aud.title }}</h1>
+    <p class="muted">Enter the password you were given to see this schedule.</p>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" required autofocus>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit">View schedule</button>
+    <p class="fine">You'll stay signed in on this device for 30 days.</p>
+  </form>
+</main>
+{% endblock %}

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ view.title }} · {{ view.range_label }}{% endblock %}
+
+{% macro evstyle(b) -%}
+{%- if b.color %}--ev: {{ b.color }};{% endif -%}
+{%- endmacro %}
+
+{% macro hover(b) -%}
+{{ b.ev.title }} · {% if b.ev.all_day %}all day{% else %}{{ b.time_label }}{% endif %}
+{%- if b.ev.location %} · {{ b.ev.location }}{% endif %}
+{%- if b.ev.calendar_name and b.ev.level.value != 'label' %} · {{ b.ev.calendar_name }}{% endif %}
+{%- if b.ev.notes %}
+
+{{ b.ev.notes }}{% endif %}
+{%- endmacro %}
+
+{% block body %}
+<main class="page">
+  <header class="top">
+    <div class="heading">
+      <h1>{{ view.title }}</h1>
+      <p class="range">{{ view.range_label }}</p>
+    </div>
+    <nav class="weeknav" aria-label="Week">
+      {% if prev %}<a class="btn" href="/a/{{ slug }}/week/{{ prev }}" aria-label="Previous week">&#8249;</a>{% else %}<span class="btn disabled" aria-hidden="true">&#8249;</span>{% endif %}
+      {% if is_this_week %}<span class="btn current">This week</span>{% else %}<a class="btn" href="/a/{{ slug }}/week/{{ this_week }}">This week</a>{% endif %}
+      {% if next %}<a class="btn" href="/a/{{ slug }}/week/{{ next }}" aria-label="Next week">&#8250;</a>{% else %}<span class="btn disabled" aria-hidden="true">&#8250;</span>{% endif %}
+    </nav>
+  </header>
+
+  {% if view.legend or view.has_busy %}
+  <ul class="legend">
+    {% for name, cls, custom in view.legend %}
+    <li><span class="swatch {{ cls }}" style="{% if custom %}--ev: {{ custom }};{% endif %}"></span>{{ name }}</li>
+    {% endfor %}
+    {% if view.has_busy %}<li><span class="swatch busy"></span>Busy</li>{% endif %}
+  </ul>
+  {% endif %}
+
+  {% set any_all_day = view.days | selectattr('all_day') | list | length > 0 %}
+
+  <section class="grid" style="--days: {{ view.days | length }}; --hours: {{ view.n_hours }}; --hour: {{ hour_px }}px" aria-label="Week grid">
+    <div class="row head">
+      <div class="gutter"></div>
+      {% for d in view.days %}
+      <div class="dayhead{% if d.is_today %} today{% endif %}">
+        <span class="dow">{{ d.dow }}</span><span class="dnum">{{ d.day.day }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if any_all_day %}
+    <div class="row allday">
+      <div class="gutter label">all day</div>
+      {% for d in view.days %}
+      <div class="alldaycell">
+        {% for b in d.all_day %}
+        <div class="ev pill {{ b.color_class }}" style="{{ evstyle(b) }}" title="{{ hover(b) }}">{{ b.ev.title }}{% if not b.ev.all_day %} <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>{% endif %}</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row body">
+      <div class="gutter hours">
+        {% for h in view.hours %}<div class="hour"><span>{{ h }}</span></div>{% endfor %}
+      </div>
+      {% for d in view.days %}
+      <div class="daycol{% if d.is_today %} today{% endif %}">
+        {% for b in d.timed %}
+        <div class="ev block {{ b.color_class }}{% if b.short %} short{% endif %}"
+             style="top: {{ '%.3f' % b.top }}%; height: {{ '%.3f' % b.height }}%; left: calc({{ '%.3f' % b.left }}% + 2px); width: calc({{ '%.3f' % b.width }}% - 4px); {{ evstyle(b) }}"
+             title="{{ hover(b) }}">
+          <span class="t">{{ b.ev.title }}</span>
+          <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>
+          {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="agenda" aria-label="Week list">
+    {% for d in view.days %}
+    <div class="aday{% if d.is_today %} today{% endif %}">
+      <h2>{{ d.label }}{% if d.is_today %} <span class="badge">Today</span>{% endif %}</h2>
+      {% set items = d.all_day + (d.timed | sort(attribute='start')) %}
+      {% if items %}
+      <ul>
+        {% for b in items %}
+        <li class="ev line {{ b.color_class }}" style="{{ evstyle(b) }}">
+          <span class="when">{% if b.ev.all_day %}All day{% else %}{{ fmt_time(b.start) }} – {{ fmt_time(b.end) }}{% endif %}</span>
+          <span class="t">{{ b.ev.title }}</span>
+          {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}
+          {% if b.ev.notes %}<span class="notes">{{ b.ev.notes }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">Nothing scheduled</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+
+  <footer class="foot">
+    {% if freshness %}<span>{{ freshness }}</span>{% endif %}
+    {% if excel %}<a href="/a/{{ slug }}/excel/{{ view.start.isoformat() }}">Download as Excel</a>{% endif %}
+    {% if ics_url %}<a href="{{ ics_url }}" title="Copy this link and add it in your calendar app as a subscription">Subscribe in your calendar app</a>{% endif %}
+    {% if has_password %}<a href="/a/{{ slug }}/logout">Sign out</a>{% endif %}
+  </footer>
+</main>
+{% endblock %}
