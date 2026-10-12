@@ -13,6 +13,20 @@
   </form>
 </header>
 
+{% if steps_done < steps | length %}
+<section class="panel setup-card">
+  <div class="panelhead">
+    <h2>Finish setting up <span class="muted small">{{ steps_done }} of {{ steps | length }} done</span></h2>
+    <a href="/setup">Setup &rarr;</a>
+  </div>
+  <ol class="checklist compact">
+    {% for st in steps %}
+    <li class="{{ 'done' if st.done else 'todo' }}"><span class="tick" aria-hidden="true">{{ '✓' if st.done else loop.index }}</span><a href="{{ st.href }}">{{ st.label }}</a></li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
 {% if local_base %}
 <p class="notice">Your public address is still set to <code>{{ cfg.server.base_url }}</code>, so the links below only work on this PC. Set your Tailscale Funnel address in <a href="/settings">Settings</a>.</p>
 {% endif %}

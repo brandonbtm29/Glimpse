@@ -29,6 +29,7 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **Optional passwords** per audience (Argon2-hashed, rate-limited, 30-day sign-in), and one-click "new link" to cut off access.
 - **Excel download** of any visible week, and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
 - Recurring events, moved/cancelled instances, all-day and overnight events, and daylight-saving changes all handled.
+- **One double-click install** on Windows and macOS, then a guided setup in the browser. No administrator rights needed.
 - Runs on Windows, macOS or Linux. One Python process, no database, no tracking.
 
 <table>
@@ -85,67 +86,41 @@ Then open:
 
 ## Set it up
 
-You need [Python 3.11+](https://www.python.org/downloads/) and [Tailscale](https://tailscale.com/download) (free Personal plan) on the computer that will host Glimpse, and Tailscale on any device you want to edit settings from.
+### 1. Install Tailscale (once)
 
-### 1. Install (on the host)
+[Download Tailscale](https://tailscale.com/download) and sign in on the computer that will host Glimpse, and on the phone or laptop you'll manage it from, using the same account. The free Personal plan is enough.
 
-**Windows** (PowerShell, in the folder you cloned or unzipped):
+### 2. Install Glimpse
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1
-```
+Download this repository (green **Code** button → *Download ZIP*, then unzip it somewhere permanent, e.g. your Documents folder), or `git clone` it. Then:
 
-**macOS / Linux:**
+| Host | Do this |
+| --- | --- |
+| **Windows** | Double-click **`Install Glimpse.cmd`**. If Windows asks, choose *Run*. |
+| **macOS** | Right-click **`Install Glimpse.command`** → *Open* (only the first time; after that a double-click works). |
+| **Linux** | Run `./scripts/unix/install.sh` |
 
-```bash
-./scripts/unix/setup.sh
-```
+The installer needs no administrator rights. It installs Python 3.12 for you if it's missing (Windows, with your OK), sets everything up in the folder, makes Glimpse start automatically when you sign in, adds **Glimpse settings** to the Start menu (Windows), and opens your browser.
 
-This creates `.venv`, installs Glimpse, and on first run creates `config.yaml` and `.env` (both git-ignored), asking you to choose a **settings-panel password** (10+ characters).
+### 3. Finish in the browser
 
-### 2. Put it on Tailscale
-
-**Windows:**
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\tailscale-setup.ps1
-```
-
-**macOS / Linux** (or by hand on Windows):
-
-```bash
-tailscale funnel --bg 8000                                  # public share links
-tailscale serve --bg --https=8443 http://127.0.0.1:8001     # settings panel, your devices only
-.venv/bin/glimpse set-base-url https://<this-pc>.<tailnet>.ts.net
-```
-
-The first Funnel command may open a browser to approve Funnel and HTTPS for your tailnet. Both settings are remembered by Tailscale across reboots.
-
-### 3. Start it automatically
-
-| Host | Command | Notes |
-| --- | --- | --- |
-| Windows | `scripts\windows\install-task.ps1` (PowerShell **as administrator**) | Starts at boot, even before you log in; restarts if it stops; logs to `logs\glimpse.log`. Undo with `uninstall-task.ps1`. |
-| macOS | `./scripts/unix/install-macos.sh` | launchd agent, starts at login. Undo with `--uninstall`. |
-| Linux | `./scripts/unix/install-linux.sh` | systemd user service. Undo with `--uninstall`. |
-
-### 4. Open the settings panel from any device
-
-On any computer or phone signed in to your tailnet, open:
-
-```
-https://<host-name>.<tailnet>.ts.net:8443
-```
-
-(On the host itself, `http://127.0.0.1:8001` works too.) Sign in with the admin password, then:
-
-1. **Calendars → Add a calendar.** Paste a feed link, press **Test link** to check it, then **Add calendar**. The page explains where each provider keeps its link (also below).
-2. **Who sees what → New audience**, e.g. "Partner" starting at `full`, "Coworkers" starting at `busy`.
-3. In the grid, choose a level for each calendar and audience. Open an audience to set **days and hours**, a **password**, how many weeks ahead they can browse, and whether Excel/subscriptions are allowed.
-4. **Preview** shows exactly what each audience will see. "Everything" shows all calendars, for you only.
+1. **Choose an admin password.** This first page only works on the computer running Glimpse.
+2. **Setup page:** press **Turn on** for *Settings panel on your devices* and *Public share links*. The first time, Tailscale may ask you to approve HTTPS/Funnel; Glimpse shows you the link, so approve it and press the button again. Glimpse fills in your public address on its own.
+3. **Calendars → Add a calendar**: paste each feed link (see below), press **Test link**, then **Add**.
+4. **Who sees what → New audience**, then pick a level for each calendar. **Preview** shows exactly what each audience will see.
 5. **Overview** lists every share link with a Copy button.
 
-Every change is checked before it's saved, takes effect immediately (no restart), and the previous `config.yaml`/`.env` are kept as `.bak`.
+From then on, manage everything from any of your devices at `https://<host-name>.<tailnet>.ts.net:8443` (shown on the Setup page).
+
+### Updating
+
+Put the new version in the same folder (`git pull`, or unzip over it; your `config.yaml`, `.env` and calendar cache are never overwritten) and run the installer again. It stops the running copy, updates it, and starts it again.
+
+### Optional extras
+
+- **Start even before anyone signs in (Windows):** if the PC sometimes reboots and sits at the sign-in screen, run `scripts\windows\start-before-login.ps1` from an administrator PowerShell.
+- **Turn it off:** `scripts\windows\uninstall.ps1` (Windows) or `.venv/bin/glimpse autostart off` (macOS/Linux) stops Glimpse and its auto-start; your files stay put.
+- **Prefer a terminal?** Everything the installer and Setup page do is also a `glimpse` command (below).
 
 ### Getting your feed links
 
@@ -181,10 +156,15 @@ Everything the panel does is stored in `config.yaml`, with secrets in `.env` ref
 
 ## Commands
 
+Run these from the Glimpse folder as `.venv\Scripts\glimpse …` (Windows) or `.venv/bin/glimpse …` (macOS/Linux).
+
 | Command | What it does |
 | --- | --- |
-| `glimpse serve` | run the public pages (8000) and settings panel (8001); `--no-admin` to skip the panel |
-| `glimpse init` | create `config.yaml` + `.env` for a fresh setup |
+| `glimpse open` | open the settings panel, starting Glimpse in the background if needed |
+| `glimpse service` | run in the background, logging to `logs/glimpse.log` (what auto-start runs) |
+| `glimpse serve` | run in this window, printing to the screen; `--no-admin` skips the panel |
+| `glimpse autostart on\|off\|status` | start automatically when you sign in |
+| `glimpse init [--setup-later]` | create `config.yaml` + `.env` for a fresh setup |
 | `glimpse admin-password` | set or reset the settings-panel password |
 | `glimpse set-base-url URL` | set the public address used in share links |
 | `glimpse check` | validate config and fetch every feed; exit code 0 = all OK |
@@ -202,6 +182,7 @@ All commands take `-c path/to/config.yaml` (default `./config.yaml`) and `-e pat
 - Events marked "show as free" never appear as Busy, only at `title`/`full`.
 - The calendar-subscription link works without the password (calendar apps can't sign in), so treat it like the password, or turn subscriptions off for that audience.
 - Forgot the admin password? On the host, run `glimpse admin-password`.
+- Something not working? Check `logs/glimpse.log` in the Glimpse folder. It never contains your feed links.
 - Testing over plain `http://127.0.0.1` works in Chrome and Edge. If another browser keeps returning you to a login page, it's refusing the secure cookie over plain http; use the `https://…ts.net` address instead.
 
 ## Development

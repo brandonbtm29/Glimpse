@@ -285,8 +285,28 @@ def init_files(config_path: Path, env_path: Path | None = None, admin_hash: str 
     if admin_hash:
         d._set_env("GLIMPSE_ADMIN_PASSWORD_HASH", admin_hash)
     elif "GLIMPSE_ADMIN_PASSWORD_HASH" not in file_env:
+        # No password yet: the first-run page sets it, guarded by a one-time token.
         d.raw["admin"]["password_hash"] = None
+        d.set_secret(d.raw["admin"], "setup_token", secrets.token_urlsafe(24), "GLIMPSE_SETUP_TOKEN")
     env = dict(d.env)
     env.update(os.environ)
     build_config(d.raw, env, config_path.parent)  # validate before writing
     ConfigStore(config_path, env_path).write(d)
+
+
+def ensure_setup_token(store: ConfigStore) -> str:
+    """Return the first-run token, creating one if the config has none."""
+    cfg = store.current()
+    if cfg.admin.setup_token:
+        return cfg.admin.setup_token
+    token = secrets.token_urlsafe(24)
+    store.update(lambda d: d.set_secret(d.section("admin"), "setup_token", token, "GLIMPSE_SETUP_TOKEN"))
+    return token
+
+
+def finish_setup(d: Draft, password_hash: str) -> None:
+    """Set the admin password and retire the one-time setup token."""
+    admin = d.section("admin")
+    d.set_secret(admin, "password_hash", password_hash, "GLIMPSE_ADMIN_PASSWORD_HASH")
+    d.drop_secret(admin, "setup_token")
+    admin.pop("setup_token", None)

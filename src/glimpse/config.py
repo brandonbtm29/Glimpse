@@ -168,11 +168,17 @@ class AdminCfg(_Strict):
     enabled: bool = True
     host: str = "127.0.0.1"
     port: int = 8001
-    password_hash: str | None = None  # set with `glimpse admin-password`
+    password_hash: str | None = None  # set with `glimpse admin-password` or the first-run page
+    setup_token: str | None = None  # one-time secret for the first-run page; removed after setup
     # If non-empty, only these Tailscale logins may use the panel (checked via the
     # Tailscale-User-Login header that `tailscale serve` adds and cannot be spoofed through it).
     allowed_tailscale_users: list[str] = Field(default_factory=list)
     secure_cookies: bool = True
+
+    @field_validator("setup_token")
+    @classmethod
+    def _token(cls, v: str | None) -> str | None:
+        return v if v and v.strip() and v.strip().lower() not in ("null", "none") else None
 
     @field_validator("password_hash")
     @classmethod

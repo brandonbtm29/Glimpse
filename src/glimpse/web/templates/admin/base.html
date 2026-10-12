@@ -25,6 +25,7 @@
       <a href="/sharing" {% if nav in ('sharing', 'audience') %}aria-current="page"{% endif %}>Who sees what</a>
       <a href="/preview" {% if nav == 'preview' %}aria-current="page"{% endif %}>Preview</a>
       <a href="/settings" {% if nav == 'settings' %}aria-current="page"{% endif %}>Settings</a>
+      <a href="/setup" {% if nav == 'setup' %}aria-current="page"{% endif %}>Setup</a>
     </nav>
     <form method="post" action="/logout" class="signout">
       <input type="hidden" name="csrf" value="{{ csrf }}">

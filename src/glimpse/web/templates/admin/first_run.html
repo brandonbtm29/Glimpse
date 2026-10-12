@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+{% block title %}Welcome to Glimpse{% endblock %}
+{% block shell %}
+<main class="card-page">
+  <form class="card welcome" method="post" action="/setup/start">
+    <div class="brand big">
+      <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect x="3" y="5" width="26" height="24" rx="5" fill="#3b6fd8"/><rect x="3" y="5" width="26" height="7" rx="3" fill="#2a55b0"/><circle cx="16" cy="20" r="4" fill="#fff"/></svg>
+      <span>Welcome to Glimpse</span>
+    </div>
+    <ol class="steps-mini">
+      <li class="now">Password</li>
+      <li>Tailscale</li>
+      <li>Calendars</li>
+    </ol>
+    <p class="muted">First, choose a password for this settings panel. You'll use it whenever you change who sees what, from this computer or any of your devices.</p>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <input type="hidden" name="token" value="{{ token }}">
+    <label for="pw">Admin password <span class="hint">At least 10 characters</span></label>
+    <input id="pw" name="password" type="password" minlength="10" autocomplete="new-password" required autofocus>
+    <label for="pw2">Repeat it</label>
+    <input id="pw2" name="password2" type="password" minlength="10" autocomplete="new-password" required>
+    <button type="submit">Save and continue</button>
+    <p class="fine">Forgot it later? On this computer, run <code>glimpse admin-password</code>.</p>
+  </form>
+</main>
+{% endblock %}

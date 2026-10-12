@@ -1,0 +1,145 @@
+"""Background mode: what auto-start and the Start-menu shortcut run.
+
+* ``glimpse-service -c config.yaml``   run Glimpse with no console window, logging to
+  ``logs/glimpse.log`` next to the config; restarts the server if it stops unexpectedly.
+* ``glimpse-open -c config.yaml``      make sure Glimpse is running, then open the settings
+  panel in the browser (the first-run setup page if no admin password is set yet).
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import logging.handlers
+import os
+import subprocess
+import sys
+import time
+import webbrowser
+from pathlib import Path
+
+from .config import ConfigError, load_config
+
+log = logging.getLogger("glimpse")
+RETRY_SECONDS = 30
+
+
+def _setup_logging(config_path: Path) -> None:
+    logs = config_path.resolve().parent / "logs"
+    logs.mkdir(exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        logs / "glimpse.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.handlers[:] = [handler]
+    root.setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # its INFO lines would print feed URLs
+    # No console under pythonw/launchd: send any stray prints to the log instead of nowhere.
+    if sys.stdout is None or sys.stderr is None:
+        stream = open(logs / "glimpse.log", "a", encoding="utf-8")  # noqa: SIM115
+        sys.stdout = sys.stdout or stream
+        sys.stderr = sys.stderr or stream
+
+
+def run_service(config_path: Path, env_path: Path | None = None) -> int:
+    from .server import is_running, run
+
+    _setup_logging(config_path)
+    supervised = os.environ.get("GLIMPSE_SUPERVISED") == "1"
+    while True:
+        try:
+            cfg = load_config(config_path, env_path)
+        except ConfigError as exc:
+            log.error("can't start: %s", exc)
+            if not supervised:
+                return 2
+            time.sleep(RETRY_SECONDS)
+            continue
+        if is_running(cfg):
+            if not supervised:
+                log.info("Glimpse is already running; nothing to do")
+                return 0
+            time.sleep(RETRY_SECONDS)  # launchd/systemd would just restart us; wait instead
+            continue
+        try:
+            log.info("starting Glimpse")
+            run(config_path, env_path, log_config=None)
+            log.info("Glimpse stopped")
+            return 0
+        except KeyboardInterrupt:
+            return 0
+        except (Exception, SystemExit):  # uvicorn exits via SystemExit when a port is taken
+            log.exception("Glimpse stopped unexpectedly; restarting in %s seconds", RETRY_SECONDS)
+            time.sleep(RETRY_SECONDS)
+
+
+def _spawn_background(config_path: Path) -> None:
+    from .autostart import service_executable
+
+    exe = service_executable()
+    args = [str(exe), "-c", str(config_path.resolve())]
+    if exe == Path(sys.executable):
+        args = [sys.executable, "-m", "glimpse.service", "-c", str(config_path.resolve())]
+    kwargs: dict = {
+        "cwd": str(config_path.resolve().parent),
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x00000008 | 0x00000200 | 0x08000000  # detached, new group, no window
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen(args, **kwargs)  # noqa: S603
+
+
+def panel_url(config_path: Path, env_path: Path | None = None) -> str:
+    """Where to send the browser: the panel, or the one-time setup page."""
+    from .store import ConfigStore, ensure_setup_token
+
+    cfg = load_config(config_path, env_path)
+    base = f"http://127.0.0.1:{cfg.admin.port}"
+    if cfg.admin.password_hash:
+        return base + "/"
+    token = ensure_setup_token(ConfigStore(config_path, env_path))
+    return f"{base}/setup/start?token={token}"
+
+
+def open_panel(config_path: Path, env_path: Path | None = None, wait: float = 25.0) -> str:
+    from .server import is_running
+
+    cfg = load_config(config_path, env_path)
+    if not is_running(cfg):
+        _spawn_background(config_path)
+        deadline = time.monotonic() + wait
+        while time.monotonic() < deadline and not is_running(cfg):
+            time.sleep(0.5)
+    url = panel_url(config_path, env_path)
+    webbrowser.open(url)
+    return url
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="glimpse-service")
+    p.add_argument("-c", "--config", default="config.yaml", type=Path)
+    p.add_argument("-e", "--env", default=None, type=Path)
+    p.add_argument("--open", action="store_true", help="open the settings panel instead")
+    args = p.parse_args(argv)
+    if args.open:
+        try:
+            open_panel(args.config, args.env)
+            return 0
+        except ConfigError as exc:
+            _setup_logging(args.config)
+            log.error("can't open the panel: %s", exc)
+            return 2
+    return run_service(args.config, args.env)
+
+
+def main_open() -> int:
+    return main([*sys.argv[1:], "--open"])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

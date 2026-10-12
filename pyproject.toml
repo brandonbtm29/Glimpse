@@ -43,6 +43,11 @@ dev = ["pytest>=8", "ruff>=0.5"]
 [project.scripts]
 glimpse = "glimpse.cli:main"
 
+# No console window on Windows (run with pythonw): used by auto-start and the Start menu entry.
+[project.gui-scripts]
+glimpse-service = "glimpse.service:main"
+glimpse-open = "glimpse.service:main_open"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/glimpse"]
 

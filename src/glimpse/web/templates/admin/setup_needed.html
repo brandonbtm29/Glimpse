@@ -1,12 +1,13 @@
 {% extends "admin/base.html" %}
-{% block title %}Set an admin password · Glimpse{% endblock %}
+{% block title %}Finish setting up Glimpse{% endblock %}
 {% block shell %}
 <main class="card-page">
   <div class="card">
-    <h1>One step first</h1>
-    <p class="muted">For safety, the settings panel stays locked until an admin password is set on the computer running Glimpse. Open a terminal there, in the Glimpse folder, and run:</p>
-    <pre class="code">.venv\Scripts\glimpse admin-password</pre>
-    <p class="fine">On macOS or Linux: <code>.venv/bin/glimpse admin-password</code>. Then reload this page.</p>
+    <h1>Finish setup on the Glimpse computer</h1>
+    <p class="muted">This settings panel doesn't have a password yet. For safety, the password can only be chosen on the computer running Glimpse.</p>
+    <p class="muted">On that computer, open <b>Glimpse settings</b> from the Start menu, or run:</p>
+    <pre class="code">glimpse open</pre>
+    <p class="fine">It opens a one-time setup page in the browser there. After that, you can sign in from any of your devices.</p>
   </div>
 </main>
 {% endblock %}

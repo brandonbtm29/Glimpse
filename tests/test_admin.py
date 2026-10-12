@@ -63,7 +63,7 @@ def test_locked_until_admin_password_set(config_path):
     store = ConfigStore(config_path)
     rt = Runtime(store.current(), store)
     c = TestClient(create_admin_app(rt))
-    assert "admin-password" in c.get("/login").text
+    assert "glimpse open" in c.get("/login").text
     assert c.post("/login", data={"password": "anything"}).status_code == 200  # setup page, no session
     assert "glimpse_admin" not in c.cookies
 

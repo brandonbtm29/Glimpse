@@ -28,9 +28,15 @@
 
   document.addEventListener("submit", function (e) {
     var form = e.target;
-    if (e.submitter && e.submitter.hasAttribute("data-confirm")) return; // handled on click
-    var msg = form.getAttribute("data-confirm");
-    if (msg && !window.confirm(msg)) e.preventDefault();
+    var btn = e.submitter;
+    if (!(btn && btn.hasAttribute("data-confirm"))) { // otherwise handled on click
+      var msg = form.getAttribute("data-confirm");
+      if (msg && !window.confirm(msg)) { e.preventDefault(); return; }
+    }
+    // Show progress; disable after this tick so the button's name/value is still sent.
+    if (btn && !e.defaultPrevented) {
+      setTimeout(function () { btn.disabled = true; btn.textContent = "Working\u2026"; }, 0);
+    }
   });
 
   // Select a link's text when its box is clicked, for easy manual copying.

@@ -1,0 +1,114 @@
+{% extends "admin/base.html" %}
+{% block title %}Setup · Glimpse settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Setup</h1>
+    <p class="muted">{{ steps | selectattr('done') | list | length }} of {{ steps | length }} done</p>
+  </div>
+  <a class="button secondary" href="/setup?refresh=1">Check again</a>
+</header>
+
+<ol class="checklist">
+  {% for st in steps %}
+  <li class="{{ 'done' if st.done else 'todo' }}"><span class="tick" aria-hidden="true">{{ '✓' if st.done else loop.index }}</span><a href="{{ st.href }}">{{ st.label }}</a></li>
+  {% endfor %}
+</ol>
+
+{% if result %}
+  {% if result.approve_url %}
+  <div class="notice">
+    <p><b>Tailscale needs your OK first.</b> Open this page, approve, then press the button again:</p>
+    <p><a class="button" href="{{ result.approve_url }}" target="_blank" rel="noopener">Approve in Tailscale</a></p>
+  </div>
+  {% else %}
+  <div class="error" role="alert">
+    <p><b>That didn't work.</b> {% if result.timed_out %}Tailscale didn't answer in time.{% endif %}</p>
+    {% if result.output %}<pre class="code">{{ result.output[:800] }}</pre>{% endif %}
+  </div>
+  {% endif %}
+{% endif %}
+
+<section class="panel">
+  <div class="panelhead"><h2>Tailscale</h2>
+    {% if ts.running %}<span class="status ok">Connected</span>{% elif ts.installed %}<span class="status bad">{{ ts.state or 'Not connected' }}</span>{% else %}<span class="status wait">Not installed</span>{% endif %}
+  </div>
+
+  {% if not ts.installed %}
+  <p class="muted">Tailscale gives Glimpse a secure address for your own devices and public share links, with nothing to configure on your router. It's free for personal use.</p>
+  <ol class="howto">
+    <li><a href="https://tailscale.com/download" target="_blank" rel="noopener">Download Tailscale</a> and install it on this computer.</li>
+    <li>Sign in (Google, Microsoft, Apple or GitHub accounts all work).</li>
+    <li>Install it on your phone or laptop too, signed in to the same account.</li>
+    <li>Come back here and press <b>Check again</b>.</li>
+  </ol>
+  {% elif not ts.running %}
+  <p class="muted">Tailscale is installed but not connected. Open Tailscale from the system tray (or menu bar) and sign in, then press <b>Check again</b>.</p>
+  {% else %}
+  <p class="muted">This computer is <b>{{ ts.dns_name }}</b> on your tailnet.</p>
+  {% if ts.magic_dns is false %}<p class="notice">MagicDNS is off, so your other devices can't find this computer by name. Turn it on in the <a href="https://login.tailscale.com/admin/dns" target="_blank" rel="noopener">Tailscale admin console → DNS</a>.</p>{% endif %}
+
+  <div class="setup-row">
+    <div>
+      <h3>Settings panel on your devices</h3>
+      <p class="muted small">Only devices signed in to your Tailscale account can reach it, and they still need the admin password.</p>
+      {% if ts.panel_published %}
+      <div class="copyrow"><input type="text" readonly value="{{ ts.panel_url }}" aria-label="Settings panel address"><button type="button" class="secondary small" data-copy="{{ ts.panel_url }}">Copy</button></div>
+      {% endif %}
+    </div>
+    <div class="setup-action">
+      {% if ts.panel_published %}<span class="status ok">On</span>{% else %}
+      <form method="post" action="/setup/tailscale/panel"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Turn on</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="setup-row">
+    <div>
+      <h3>Public share links</h3>
+      <p class="muted small">Lets people you send a link to open their page from anywhere. They only ever see what you allow, and nothing else is reachable.</p>
+      {% if ts.public_published %}<p class="small">Links start with <code>{{ ts.public_url }}/a/…</code></p>{% endif %}
+    </div>
+    <div class="setup-action">
+      {% if ts.public_published %}
+      <span class="status ok">On</span>
+      <form method="post" action="/setup/tailscale/public-off" data-confirm="Turn off public links? Nobody will be able to open their share link until you turn this back on."><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="secondary small">Turn off</button></form>
+      {% else %}
+      <form method="post" action="/setup/tailscale/public"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Turn on</button></form>
+      {% endif %}
+    </div>
+  </div>
+  <p class="fine">The first time, Tailscale may ask you to approve HTTPS and Funnel in your browser. Glimpse will show you the link.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panelhead"><h2>Start automatically</h2>
+    {% if auto.enabled %}<span class="status ok">On</span>{% else %}<span class="status wait">Off</span>{% endif %}
+  </div>
+  {% if not auto.supported %}
+  <p class="muted">Automatic start isn't supported on this system; start Glimpse with <code>glimpse service</code>.</p>
+  {% else %}
+  <p class="muted">{{ auto.detail }}. Glimpse runs quietly in the background, with no window, and restarts itself if anything goes wrong. Logs are in the <code>logs</code> folder.</p>
+  <form method="post" action="/setup/autostart" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if auto.enabled %}
+    <button type="submit" name="action" value="off" class="secondary">Turn off</button>
+    {% else %}
+    <button type="submit" name="action" value="on">Turn on</button>
+    {% endif %}
+  </form>
+  {% endif %}
+</section>
+
+{% if not cfg.calendars or not cfg.audiences %}
+<section class="panel">
+  <h2>Then: your calendars</h2>
+  <p class="muted">Add each calendar's private feed link, then create an audience (e.g. "Partner" or "Coworkers") and choose what they see.</p>
+  <div class="actions">
+    <a class="button" href="/calendars">Add a calendar</a>
+    <a class="button secondary" href="/sharing">Create an audience</a>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

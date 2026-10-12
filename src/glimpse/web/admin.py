@@ -13,6 +13,7 @@ import hmac
 import logging
 import re
 import secrets
+import time
 import zoneinfo
 from datetime import date, timedelta
 from pathlib import Path
@@ -29,13 +30,13 @@ from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from starlette.concurrency import run_in_threadpool
 
-from .. import __version__
+from .. import __version__, autostart, tailscale
 from ..config import WEEKDAYS, AppConfig, AudienceCfg, ConfigError, Level
 from ..core import allowed_week_bounds, week_range, week_start
 from ..events import parse_events
 from ..render.week import PALETTE_SIZE, build_week, fmt_day, fmt_time
 from ..sources import USER_AGENT, normalize_url
-from ..store import Draft, _env_name
+from ..store import Draft, _env_name, finish_setup
 from .auth import LoginLimiter, feed_token
 from .runtime import Runtime
 
@@ -69,6 +70,12 @@ FLASH = {
     "pw_removed": "Password removed. The link alone now opens this page.",
     "refreshed": "Calendars refreshed.",
     "admin_pw": "Admin password changed.",
+    "welcome": "Password saved. Next, put Glimpse on Tailscale so you can reach it from your other devices.",
+    "ts_panel": "Settings panel published to your tailnet.",
+    "ts_public": "Share links are now public.",
+    "ts_public_off": "Share links are no longer public.",
+    "auto_on": "Glimpse will start automatically when you sign in.",
+    "auto_off": "Automatic start turned off.",
 }
 
 ADMIN_HEADERS = {
@@ -327,6 +334,127 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             resp.delete_cookie(COOKIE, path="/")
         return resp
 
+    # -- first run: choose the admin password ------------------------------------------------
+    # Only before a password exists, only with the one-time token from `glimpse open`
+    # (stored in .env on this computer), and only from this computer: requests that come
+    # through `tailscale serve` carry Tailscale headers / a forwarded client address.
+
+    def is_local(request: Request) -> bool:
+        host = request.client.host if request.client else ""
+        via_tailscale = any(h.lower().startswith("tailscale-") for h in request.headers)
+        return host in ("127.0.0.1", "::1", "localhost") and not via_tailscale
+
+    def token_ok(token: str) -> bool:
+        expected = cfg().admin.setup_token
+        return bool(expected) and hmac.compare_digest(token.encode(), expected.encode())
+
+    @app.get("/setup/start", response_class=HTMLResponse)
+    def setup_start(request: Request, token: str = ""):
+        if cfg().admin.password_hash:
+            return to_login()
+        if not (is_local(request) and token_ok(token)):
+            return page(request, "admin/setup_needed.html", {}, status=403)
+        return page(request, "admin/first_run.html", {"token": token, "error": None})
+
+    @app.post("/setup/start", response_class=HTMLResponse)
+    async def setup_start_submit(request: Request):
+        if cfg().admin.password_hash:
+            return to_login()
+        form = await request.form()
+        token = str(form.get("token", ""))
+        if not (is_local(request) and token_ok(token)):
+            return page(request, "admin/setup_needed.html", {}, status=403)
+        pw, pw2 = str(form.get("password", "")), str(form.get("password2", ""))
+        error = None
+        if len(pw) < 10:
+            error = "Use at least 10 characters."
+        elif pw != pw2:
+            error = "The two passwords didn't match."
+        if error:
+            return page(request, "admin/first_run.html", {"token": token, "error": error}, status=400)
+        h = await run_in_threadpool(_hasher.hash, pw)
+        await save(lambda d: finish_setup(d, h))
+        resp = done("/setup", "welcome")
+        set_session(resp)
+        return resp
+
+    # -- setup page: Tailscale + automatic start ------------------------------------------------
+
+    ts_cache: dict[str, Any] = {"at": 0.0, "st": None}
+
+    def ts_status(force: bool = False) -> tailscale.Status:
+        if force or ts_cache["st"] is None or time.monotonic() - ts_cache["at"] > 60:
+            ts_cache["st"] = tailscale.status(cfg().admin.port, cfg().server.port)
+            ts_cache["at"] = time.monotonic()
+        return ts_cache["st"]
+
+    def checklist(ts: tailscale.Status) -> list[dict]:
+        c = cfg()
+        auto = autostart.status()
+        return [
+            {"label": "Admin password", "done": bool(c.admin.password_hash), "href": "/settings"},
+            {"label": "Settings panel on your devices", "done": ts.panel_published, "href": "/setup"},
+            {"label": "Public share links", "done": ts.public_published, "href": "/setup"},
+            {"label": "Start automatically", "done": auto.enabled or not auto.supported, "href": "/setup"},
+            {"label": "Add a calendar", "done": bool(c.calendars), "href": "/calendars"},
+            {"label": "Create an audience", "done": bool(c.audiences), "href": "/sharing"},
+        ]
+
+    @app.get("/setup", response_class=HTMLResponse)
+    def setup(request: Request, refresh: str = ""):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        ts = ts_status(force=bool(refresh))
+        return page(
+            request,
+            "admin/setup.html",
+            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": None},
+            sess,
+        )
+
+    async def ts_action(request: Request, action, flash: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        res: tailscale.Result = await run_in_threadpool(action)
+        ts = await run_in_threadpool(ts_status, True)
+        if res.ok:
+            if ts.dns_name and not cfg().server.base_url.startswith(f"https://{ts.dns_name}"):
+                await save(lambda d: d.section("server").__setitem__("base_url", f"https://{ts.dns_name}"))
+            return done("/setup", flash)
+        return page(
+            request,
+            "admin/setup.html",
+            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": res},
+            sess,
+            status=200,
+        )
+
+    @app.post("/setup/tailscale/panel")
+    async def setup_ts_panel(request: Request):
+        return await ts_action(request, lambda: tailscale.publish_panel(cfg().admin.port), "ts_panel")
+
+    @app.post("/setup/tailscale/public")
+    async def setup_ts_public(request: Request):
+        return await ts_action(request, lambda: tailscale.publish_public(cfg().server.port), "ts_public")
+
+    @app.post("/setup/tailscale/public-off")
+    async def setup_ts_public_off(request: Request):
+        return await ts_action(request, tailscale.unpublish_public, "ts_public_off")
+
+    @app.post("/setup/autostart")
+    async def setup_autostart(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if form.get("action") == "off":
+            await run_in_threadpool(autostart.disable)
+            return done("/setup", "auto_off")
+        await run_in_threadpool(autostart.enable, store.config_path)
+        await run_in_threadpool(autostart.add_start_menu_entry, store.config_path)
+        return done("/setup", "auto_on")
+
     # -- overview ------------------------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
@@ -346,10 +474,17 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             for aid, aud in c.audiences.items()
         ]
         local_base = any(h in c.server.base_url for h in ("127.0.0.1", "localhost"))
+        steps = checklist(ts_status())
         return page(
             request,
             "admin/overview.html",
-            {"feeds": feed_rows(), "auds": auds, "local_base": local_base},
+            {
+                "feeds": feed_rows(),
+                "auds": auds,
+                "local_base": local_base,
+                "steps": steps,
+                "steps_done": sum(1 for st in steps if st["done"]),
+            },
             sess,
         )
 

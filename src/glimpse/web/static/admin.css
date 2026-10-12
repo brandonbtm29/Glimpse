@@ -193,3 +193,32 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
   .copyrow input { flex: 1 1 100%; }
   .table th:nth-child(3), .table td:nth-child(3) { display: none; }
 }
+
+/* Setup checklist and wizard */
+.checklist { list-style: none; padding: 0; margin: 0 0 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.checklist li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.checklist.compact li { padding: 8px 10px; background: var(--bg); }
+.checklist a { color: var(--ink); text-decoration: none; font-weight: 600; }
+.checklist li.done a { color: var(--muted); font-weight: 500; }
+.checklist .tick {
+  flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; border: 1.5px solid var(--line-strong); color: var(--muted);
+}
+.checklist li.done .tick { background: #2f9e63; border-color: #2f9e63; color: #fff; }
+.checklist li.todo .tick { border-color: var(--accent); color: var(--accent); }
+.setup-card { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.setup-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; padding: 14px 0; border-top: 1px solid var(--line); }
+.setup-row h3 { font-size: 15px; margin: 0 0 4px; }
+.setup-row p { margin: 0 0 6px; }
+.setup-action { display: flex; align-items: center; gap: 10px; flex: none; }
+.howto { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.content > .error p, .content > .notice p { margin: 0 0 6px; }
+.content > .error pre { margin: 6px 0 0; white-space: pre-wrap; }
+.brand.big { font-size: 20px; gap: 12px; padding: 0; margin-bottom: 4px; }
+.card.welcome { max-width: 420px; }
+.steps-mini { list-style: none; display: flex; gap: 6px; padding: 0; margin: 4px 0 6px; counter-reset: s; }
+.steps-mini li { counter-increment: s; font-size: 12px; font-weight: 600; color: var(--faint); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.steps-mini li::before { content: counter(s) ". "; }
+.steps-mini li.now { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.card .hint { display: inline; margin-left: 6px; }
+@media (max-width: 820px) { .setup-row { flex-direction: column; } }

@@ -137,15 +137,17 @@ def cmd_init(args: argparse.Namespace) -> None:
     if args.config.exists():
         print(f"{args.config} already exists; nothing to do. (Set the admin password with `admin-password`.)")
         return
-    print("Creating a new Glimpse setup. Choose a password for the settings panel (10+ characters).")
-    pw = _ask_new_password(10, args.password)
+    admin_hash = None
+    if not args.setup_later:
+        print("Creating a new Glimpse setup. Choose a password for the settings panel (10+ characters).")
+        admin_hash = PasswordHasher().hash(_ask_new_password(10, args.password))
     try:
-        init_files(args.config, args.env, PasswordHasher().hash(pw))
+        init_files(args.config, args.env, admin_hash)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
     print(f"Created {args.config} and {args.env or args.config.with_name('.env')}.")
-    print("Next: run `glimpse serve` and open http://127.0.0.1:8001 to add calendars.")
+    print("Next: run `glimpse open` to finish setting up in your browser.")
 
 
 def cmd_admin_password(args: argparse.Namespace) -> None:
@@ -184,71 +186,40 @@ def cmd_set_base_url(args: argparse.Namespace) -> None:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    import asyncio
+    from .server import run
 
-    import uvicorn
+    _load(args)  # friendly error if the config is broken
+    run(args.config, args.env, args.host, args.port, args.admin_port, args.no_admin)
 
-    from .store import ConfigStore
-    from .web.app import create_app
-    from .web.runtime import Runtime
 
-    cfg = _load(args)
-    store = ConfigStore(args.config, args.env)
-    rt = Runtime(cfg, store)
-    host = args.host or cfg.server.host
-    port = args.port or cfg.server.port
-    for h in (host, cfg.admin.host):
-        if h not in ("127.0.0.1", "localhost", "::1"):
-            print(
-                f"warning: listening on {h}; anyone on that network can reach it directly. "
-                "Use 127.0.0.1 with Tailscale instead.",
-                file=sys.stderr,
-            )
+def cmd_service(args: argparse.Namespace) -> None:
+    from .service import run_service
 
-    servers = [
-        uvicorn.Server(
-            uvicorn.Config(
-                create_app(cfg, glimpse=rt.glimpse, background_refresh=False),
-                host=host,
-                port=port,
-                log_level="warning",
-                access_log=False,
-                proxy_headers=cfg.server.trust_proxy_headers,
-                forwarded_allow_ips="127.0.0.1",
-            )
-        )
-    ]
-    log = logging.getLogger("glimpse")
-    if cfg.admin.enabled and not args.no_admin:
-        from .web.admin import create_admin_app
+    sys.exit(run_service(args.config, args.env))
 
-        servers.append(
-            uvicorn.Server(
-                uvicorn.Config(
-                    create_admin_app(rt),
-                    host=cfg.admin.host,
-                    port=args.admin_port or cfg.admin.port,
-                    log_level="warning",
-                    access_log=False,
-                    proxy_headers=True,
-                    forwarded_allow_ips="127.0.0.1",
-                )
-            )
-        )
-        if not cfg.admin.password_hash:
-            log.warning("settings panel is locked until you run `glimpse admin-password`")
-    log.info("public pages on http://%s:%s", host, port)
-    if len(servers) > 1:
-        log.info("settings panel on http://%s:%s", cfg.admin.host, args.admin_port or cfg.admin.port)
 
-    async def run() -> None:
-        refresher = asyncio.create_task(rt.refresh_loop())
-        try:
-            await asyncio.gather(*(s.serve() for s in servers))
-        finally:
-            refresher.cancel()
+def cmd_open(args: argparse.Namespace) -> None:
+    from .service import open_panel
 
-    asyncio.run(run())
+    _load(args)
+    url = open_panel(args.config, args.env)
+    print(f"Opened {url.split('?')[0]}")
+
+
+def cmd_autostart(args: argparse.Namespace) -> None:
+    from . import autostart
+
+    if args.action == "on":
+        st = autostart.enable(args.config)
+        autostart.add_start_menu_entry(args.config)
+    elif args.action == "off":
+        st = autostart.disable()
+    else:
+        st = autostart.status()
+    if not st.supported:
+        print("Automatic start isn't supported on this system.")
+        sys.exit(1)
+    print(("On: " if st.enabled else "Off: ") + st.detail + (f" ({st.where})" if st.enabled else ""))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -268,7 +239,20 @@ def main(argv: list[str] | None = None) -> None:
 
     s = sub.add_parser("init", help="create config.yaml and .env for a fresh setup")
     s.add_argument("--password", help=argparse.SUPPRESS)
+    s.add_argument(
+        "--setup-later", action="store_true", help="choose the admin password in the browser instead"
+    )
     s.set_defaults(fn=cmd_init)
+
+    s = sub.add_parser("open", help="open the settings panel (starts Glimpse in the background if needed)")
+    s.set_defaults(fn=cmd_open)
+
+    s = sub.add_parser("service", help="run in the background, logging to logs/glimpse.log")
+    s.set_defaults(fn=cmd_service)
+
+    s = sub.add_parser("autostart", help="start Glimpse automatically when you sign in")
+    s.add_argument("action", choices=["on", "off", "status"])
+    s.set_defaults(fn=cmd_autostart)
 
     s = sub.add_parser("set-base-url", help="set the public address used in share links")
     s.add_argument("url")
