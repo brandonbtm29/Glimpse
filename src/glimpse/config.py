@@ -216,7 +216,7 @@ class AudienceCfg(_Strict):
     allow_ics: bool = True
     shared_link: bool = True  # False: only people's own links work (see `people`)
     timezone: str | None = None  # zone viewers see by default; None = yours
-    views: list[ViewName] = Field(default_factory=lambda: ["week"])
+    views: list[ViewName] = Field(default_factory=lambda: list(VIEW_ORDER))
     default_view: ViewName = "week"
 
     @field_validator("slug")

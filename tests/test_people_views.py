@@ -268,10 +268,15 @@ def all_views(d):
         aud["views"] = ["week", "month", "quarter", "year"]
 
 
-def test_views_not_enabled_are_404(glimpse):
-    c = TestClient(create_app(glimpse.cfg, glimpse=glimpse, background_refresh=False), follow_redirects=False)
+def test_views_not_enabled_are_404(store):
+    g, c = build(store, lambda d: d.audiences["coworkers"].__setitem__("views", ["week"]))
     assert c.get(f"/a/{COWORKER_SLUG}/month/2026-10-01").status_code == 404
-    assert "views" not in c.get(f"/a/{COWORKER_SLUG}/week/{W}").text.split('aria-label="View"')[0][-50:]
+    assert 'class="views"' not in c.get(f"/a/{COWORKER_SLUG}/week/{W}").text  # one view: no switcher
+
+
+def test_new_audiences_get_every_view(store):
+    cfg = store.update(lambda d: d.add_audience("Lab group"))
+    assert cfg.audiences["lab_group"].views == ["week", "month", "quarter", "year"]
 
 
 def test_month_view(store):

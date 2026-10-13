@@ -445,6 +445,8 @@ def test_preview_modes(admin, rt):
     for mode, marker in (("month", 'class="month"'), ("quarter", "heat-quarter"), ("year", "heat-year")):
         html = admin.get(f"/preview?view_as=coworkers&mode={mode}&week=2026-10-01").text
         assert marker in html, mode
+    rt.store.update(lambda d: d.audiences["partner"].__setitem__("views", ["week"]))
+    rt.apply(rt.store.current(), fetch=False)
     html = admin.get("/preview?view_as=partner&mode=year").text  # not allowed for partner: week
     assert 'class="grid"' in html
 

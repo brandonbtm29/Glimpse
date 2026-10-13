@@ -8,6 +8,13 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-13
+
+### Changed
+- New audiences can switch between all four views (week, month, 3 months, year) by default.
+  Audiences saved before 0.3.1 keep their settings: tick the views on the audience's page.
+- The audience page explains that a single ticked view means no view switcher.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added
@@ -51,7 +58,8 @@ notes come from the matching section below.
 - `#private` and `#hide` tags and Outlook/Google private events respected for everyone.
 - Week page for desktop and phone, Excel download, and a subscribe-able filtered ICS feed.
 
-[Unreleased]: https://github.com/brandonbtm29/Glimpse/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/brandonbtm29/Glimpse/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/brandonbtm29/Glimpse/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/brandonbtm29/Glimpse/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/brandonbtm29/Glimpse/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/brandonbtm29/Glimpse/releases/tag/v0.1.0

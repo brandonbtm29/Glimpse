@@ -115,6 +115,7 @@
 
     <fieldset class="checks">
       <legend>Views they can switch between</legend>
+      {% if aud.views | length == 1 %}<p class="hint">Only one view is ticked, so their page has no view switcher. Tick more to let them change between week, month and longer views.</p>{% endif %}
       {% for v in ['week', 'month', 'quarter', 'year'] %}
       <label class="check"><input type="checkbox" name="view" value="{{ v }}" {% if v in aud.views %}checked{% endif %}> {{ view_help[v] }}</label>
       {% endfor %}
