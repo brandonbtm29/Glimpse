@@ -13,6 +13,7 @@ Rules:
 from __future__ import annotations
 
 import copy
+import hashlib
 import os
 import re
 import secrets
@@ -296,6 +297,16 @@ class ConfigStore:
     def current(self) -> AppConfig:
         raw, env = self.load()
         return build_config(raw, self._env_for_build(env), self.config_path.parent, str(self.config_path))
+
+    def revision(self) -> str:
+        """Changes whenever config.yaml or .env changes (from this panel, another device, or by hand)."""
+        h = hashlib.sha256()
+        for path in (self.config_path, self.env_path):
+            try:
+                h.update(path.read_bytes())
+            except OSError:
+                h.update(b"-")
+        return h.hexdigest()[:16]
 
     def upgrade_file(self) -> int | None:
         """Rewrite an older config.yaml in the current settings format.

@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import os
 import re
+from dataclasses import dataclass
 from datetime import date, time
 from enum import StrEnum
 from pathlib import Path
@@ -55,20 +56,40 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# Small shapes drawn in an event's corner and in the legend, so calendars can be told
+# apart without relying on colour alone.
+MARKERS: dict[str, str] = {
+    "circle": "\u25cf",
+    "square": "\u25a0",
+    "triangle": "\u25b2",
+    "diamond": "\u25c6",
+    "star": "\u2605",
+    "ring": "\u25cb",
+    "cross": "\u271a",
+    "heart": "\u2665",
+}
+Marker = Literal["circle", "square", "triangle", "diamond", "star", "ring", "cross", "heart"]
+
+
+def _check_color(v: str | None) -> str | None:
+    if v is None or not v.strip():
+        return None
+    if not re.fullmatch(r"#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}", v.strip()):
+        raise ValueError("color must be a hex colour like '#2f9e44' or a CSS colour name")
+    return v.strip()
+
+
 class CalendarCfg(_Strict):
     name: str
     url: str
     label: str | None = None  # shown at the `label` level; defaults to `name`
     color: str | None = None  # CSS colour; a palette colour is used when unset
+    marker: Marker | None = None  # optional shape shown with its events
 
     @field_validator("color")
     @classmethod
     def _color(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        if not re.fullmatch(r"#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,30}", v.strip()):
-            raise ValueError("color must be a hex colour like '#2f9e44' or a CSS colour name")
-        return v.strip()
+        return _check_color(v)
 
     @property
     def display_label(self) -> str:
@@ -124,6 +145,15 @@ class GroupCfg(_Strict):
 
     name: str
     calendars: list[str] = Field(default_factory=list)
+    # Used when an audience is set to see group names instead of calendar names.
+    label: str | None = None  # at the `label` level; defaults to the name
+    color: str | None = None  # defaults to the first calendar's colour
+    marker: Marker | None = None  # defaults to the first calendar's shape
+
+    @field_validator("color")
+    @classmethod
+    def _color(cls, v: str | None) -> str | None:
+        return _check_color(v)
 
 
 RuleField = Literal["title", "notes", "location"]
@@ -165,6 +195,9 @@ class RuleCfg(_Strict):
     def display_name(self) -> str:
         return self.name or ", ".join(self.match)
 
+
+MAX_WEEKS = 104  # the most a number can say; None ("all") goes further
+ALL_WEEKS = 520  # what "all" means in practice: ten years either way
 
 ViewName = Literal["week", "month", "quarter", "year"]
 VIEW_ORDER: list[str] = ["week", "month", "quarter", "year"]
@@ -209,8 +242,9 @@ class AudienceCfg(_Strict):
     calendars: dict[str, Level] = Field(default_factory=dict)  # per-calendar overrides
     groups: dict[str, Level] = Field(default_factory=dict)  # per-group levels
     hours: HoursCfg | None = None
-    weeks_ahead: int = Field(default=4, ge=0, le=52)
-    weeks_behind: int = Field(default=1, ge=0, le=52)
+    weeks_ahead: int | None = Field(default=4, ge=0, le=MAX_WEEKS)  # None = no limit
+    weeks_behind: int | None = Field(default=1, ge=0, le=MAX_WEEKS)
+    group_names: bool = False  # show each group's name instead of its calendars' names
     show_all_day_busy: bool = False  # all-day events at `busy` level are usually reminders
     allow_excel: bool = True
     allow_ics: bool = True
@@ -324,6 +358,20 @@ class UpdatesCfg(_Strict):
         return v
 
 
+@dataclass(frozen=True)
+class CalDisplay:
+    key: str  # calendar id, or "group:<id>"
+    name: str
+    label: str
+    color: str | None
+    marker: str | None
+    palette_id: str  # calendar whose palette slot the colour comes from
+
+    @property
+    def glyph(self) -> str:
+        return MARKERS.get(self.marker or "", "")
+
+
 class AppConfig(_Strict):
     config_version: int = Field(default=CONFIG_VERSION, ge=1)
     timezone: str = "America/New_York"
@@ -387,6 +435,13 @@ class AppConfig(_Strict):
         return self
 
     @property
+    def owner_possessive(self) -> str | None:
+        name = (self.owner_name or "").strip()
+        if not name:
+            return None
+        return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+    @property
     def owner_label(self) -> str:
         name = (self.owner_name or "").strip()
         if not name:
@@ -411,6 +466,30 @@ class AppConfig(_Strict):
         if gid is not None and gid in audience.groups:
             return audience.groups[gid]
         return audience.default
+
+    def display_for(self, audience: AudienceCfg, calendar_id: str) -> CalDisplay:
+        """How a calendar is named, coloured and marked for an audience (group or calendar)."""
+        cal = self.calendars[calendar_id]
+        gid = self.group_of(calendar_id) if audience.group_names else None
+        if gid is not None:
+            grp = self.groups[gid]
+            first = self.calendars[grp.calendars[0]]
+            return CalDisplay(
+                key=f"group:{gid}",
+                name=grp.name,
+                label=grp.label or grp.name,
+                color=grp.color or first.color,
+                marker=grp.marker or first.marker,
+                palette_id=grp.calendars[0],
+            )
+        return CalDisplay(
+            key=calendar_id,
+            name=cal.name,
+            label=cal.display_label,
+            color=cal.color,
+            marker=cal.marker,
+            palette_id=calendar_id,
+        )
 
     def level_source(self, audience: AudienceCfg, calendar_id: str) -> str:
         """Where a calendar's level comes from: 'calendar', 'group' or 'default'."""

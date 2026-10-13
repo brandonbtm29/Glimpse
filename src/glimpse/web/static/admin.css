@@ -258,3 +258,26 @@ button.link.danger { color: #c93a5c; background: none; }
 .notes summary { cursor: pointer; font-weight: 600; }
 .notes-body { white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 8px; max-height: 320px; overflow: auto; }
 .side .version + .signout { margin-top: 0; }
+
+/* Audiences hub on Who sees what */
+.aud-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 0 0 22px; }
+.aud-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow); }
+.aud-card .aud-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.aud-card h2 { font-size: 16px; margin: 0; }
+.aud-card h2 a { color: var(--ink); text-decoration: none; }
+.aud-card h2 a:hover { color: var(--accent); }
+.aud-card p { margin: 0; }
+.aud-card.add { border-style: dashed; align-items: center; justify-content: center; text-decoration: none; color: var(--accent); font-weight: 600; box-shadow: none; min-height: 110px; }
+.subhead { font-size: 16px; margin: 4px 0 10px; }
+.sidenav a.sub { padding-left: 26px; font-size: 13px; color: var(--muted); }
+.sidenav a.sub[aria-current=page] { color: var(--accent); }
+.mk-admin { color: var(--ev); font-size: 12px; margin-left: 4px; }
+.inline.weeks { display: flex; align-items: center; gap: 10px; }
+.inline.weeks input[type=number] { max-width: 110px; }
+.inline.weeks .check { font-weight: 500; }
+
+/* Live refresh */
+.refresh-progress { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-left: auto; margin-right: 12px; }
+.spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }

@@ -8,6 +8,33 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-13
+
+### Added
+- **Shapes for calendars**: give a calendar (or group) a small shape (circle, triangle, star…)
+  shown in the corner of its events and in the legend, so calendars differ by more than colour.
+- **Group names for an audience**: an audience can see "Work" instead of the individual
+  calendars in that group. Groups can have their own label, colour and shape.
+- **Audiences at a glance** on Who sees what: a card per audience (people, views, hours) with
+  Manage, Preview and Copy link, plus each audience listed under Who sees what in the sidebar.
+- **Welcome banner** on shared pages with the Glimpse logo: "Welcome, Alex! Brandon's schedule,
+  shared with you through Glimpse" (uses your first name from Settings).
+- **Live refresh** on Overview: each calendar shows a spinner, then a tick or a cross with the
+  problem, and a Stop button.
+- **Browse limits** can be 0 to 104 weeks, or **All**. Calendar-app subscriptions still cover
+  at most about two years ahead and one back.
+- **Protection against conflicting saves**: if settings were changed from another device after
+  you opened a page, saving it is refused (nothing is overwritten) and you're asked to reload.
+
+### Changed
+- The legend lists every calendar the audience can see by name, faded when it has nothing in
+  the period shown, instead of only calendars with events that week.
+- A fifth wrong password now locks that device out straight away for 15 minutes (was: a sixth
+  try within one minute), and the message says how long to wait and warns before the last try.
+
+### Fixed
+- The Calendars page's browser-tab title contained the whole Groups section.
+
 ## [0.3.1] - 2026-10-13
 
 ### Changed
@@ -58,7 +85,8 @@ notes come from the matching section below.
 - `#private` and `#hide` tags and Outlook/Google private events respected for everyone.
 - Week page for desktop and phone, Excel download, and a subscribe-able filtered ICS feed.
 
-[Unreleased]: https://github.com/brandonbtm29/Glimpse/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/brandonbtm29/Glimpse/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/brandonbtm29/Glimpse/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/brandonbtm29/Glimpse/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/brandonbtm29/Glimpse/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/brandonbtm29/Glimpse/compare/v0.1.0...v0.2.0

@@ -4,6 +4,10 @@
 {%- endmacro %}
 
 {# Owner-only hint (settings preview): this event was merged from copies on several calendars. #}
+{% macro mark(ev) -%}
+{%- if ev.marker %}<span class="mk" aria-hidden="true">{{ ev.marker }}</span>{% endif -%}
+{%- endmacro %}
+
 {% macro copies(b) -%}
 {%- if show_copies and b.ev.copies > 1 %} <span class="copies" title="On {{ b.ev.copies }} of your calendars, shown once">×{{ b.ev.copies }}</span>{% endif -%}
 {%- endmacro %}
@@ -19,8 +23,8 @@
 
   {% if view.legend or view.has_busy %}
   <ul class="legend">
-    {% for name, cls, custom in view.legend %}
-    <li><span class="swatch {{ cls }}" style="{% if custom %}--ev: {{ custom }};{% endif %}"></span>{{ name }}</li>
+    {% for it in view.legend %}
+    <li class="{{ it.color_class }}{% if not it.active %} quiet{% endif %}" style="{% if it.color %}--ev: {{ it.color }};{% endif %}"{% if not it.active %} title="Nothing in this {{ 'week' if view.days is defined else 'month' }}"{% endif %}>{% if it.marker %}<span class="mk-key" aria-hidden="true">{{ it.marker }}</span>{% else %}<span class="swatch"></span>{% endif %}{{ it.name }}</li>
     {% endfor %}
     {% if view.has_busy %}<li><span class="swatch busy"></span>Busy</li>{% endif %}
   </ul>
@@ -44,7 +48,7 @@
       {% for d in view.days %}
       <div class="alldaycell">
         {% for b in d.all_day %}
-        <div class="ev pill {{ b.color_class }}" style="{{ evstyle(b) }}" title="{{ hover(b) }}">{{ b.ev.title }}{{ copies(b) }}{% if not b.ev.all_day %} <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>{% endif %}</div>
+        <div class="ev pill {{ b.color_class }}" style="{{ evstyle(b) }}" title="{{ hover(b) }}">{{ mark(b.ev) }}{{ b.ev.title }}{{ copies(b) }}{% if not b.ev.all_day %} <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>{% endif %}</div>
         {% endfor %}
       </div>
       {% endfor %}
@@ -60,7 +64,7 @@
         {% for b in d.timed %}
         <div class="ev block {{ b.color_class }}{% if b.short %} short{% endif %}"
              style="top: {{ '%.3f' % b.top }}%; height: {{ '%.3f' % b.height }}%; left: calc({{ '%.3f' % b.left }}% + 2px); width: calc({{ '%.3f' % b.width }}% - 4px); {{ evstyle(b) }}"
-             title="{{ hover(b) }}">
+             title="{{ hover(b) }}">{{ mark(b.ev) }}
           <span class="t">{{ b.ev.title }}{{ copies(b) }}</span>
           <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>
           {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}
@@ -79,7 +83,7 @@
       {% if items %}
       <ul>
         {% for b in items %}
-        <li class="ev line {{ b.color_class }}" style="{{ evstyle(b) }}">
+        <li class="ev line {{ b.color_class }}" style="{{ evstyle(b) }}">{{ mark(b.ev) }}
           <span class="when">{% if b.ev.all_day %}All day{% else %}{{ fmt_time(b.start) }} – {{ fmt_time(b.end) }}{% endif %}</span>
           <span class="t">{{ b.ev.title }}{{ copies(b) }}</span>
           {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}

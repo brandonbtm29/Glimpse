@@ -28,7 +28,8 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **Settings panel in your browser**: add calendar links, decide who sees what, and preview every audience's exact view. Works from any device on your Tailscale network (Mac, Windows, phone); never exposed publicly.
 - **Any number of calendars** from Google, Outlook / Microsoft 365, iCloud, or anything else that publishes an ICS feed.
 - **Five detail levels**, set per audience *and* per calendar: `full`, `title`, `label`, `busy`, `hidden`.
-- **Calendar groups**: put related calendars together (e.g. "Work" = university + lab) and set one level per group, with per-calendar exceptions.
+- **Shapes as well as colours**: give a calendar a small shape (triangle, star…) so its events stand out without relying on colour.
+- **Calendar groups**: put related calendars together (e.g. "Work" = university + lab) and set one level per group, with per-calendar exceptions. Some audiences can see just the group's name ("Work") instead of each calendar.
 - **Time windows**: show an audience only certain days and hours (e.g. Mon–Fri 8:00–18:00).
 - **Per-event overrides**: put `#private` in an event to make it "Busy" for everyone, or `#hide` to hide it. Events marked Private in Outlook/Google are treated as `#private` automatically.
 - **Keyword privacy rules**: "anything mentioning *doctor* or *therapy* is Busy for everyone", or "hide anything with *interview*". Whole-word, case- and accent-insensitive, optionally limited to some calendars, with a preview of which upcoming events a rule catches.

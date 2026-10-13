@@ -32,7 +32,17 @@ from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
 from .. import __version__, autostart, tailscale, updates
-from ..config import VIEW_ORDER, WEEKDAYS, AppConfig, AudienceCfg, ConfigError, Level, RuleCfg
+from ..config import (
+    MARKERS,
+    MAX_WEEKS,
+    VIEW_ORDER,
+    WEEKDAYS,
+    AppConfig,
+    AudienceCfg,
+    ConfigError,
+    Level,
+    RuleCfg,
+)
 from ..core import add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..events import parse_events
 from ..policy import rule_matches
@@ -114,6 +124,20 @@ ADMIN_HEADERS = {
 }
 
 _hasher = PasswordHasher()
+
+
+class SaveConflict(Exception):
+    """The settings changed (another device, or a hand edit) after this page was opened."""
+
+
+def browse_label(aud: AudienceCfg, lo: date, hi: date) -> str:
+    if aud.weeks_ahead is None and aud.weeks_behind is None:
+        return "any week"
+    start = "all past weeks" if aud.weeks_behind is None else fmt_day(lo)
+    end = "all future weeks" if aud.weeks_ahead is None else fmt_day(hi + timedelta(days=6))
+    if aud.weeks_ahead is not None and aud.weeks_behind is not None:
+        return fmt_range(lo, hi + timedelta(days=6))
+    return f"{start} to {end}"
 
 
 def release_notes(text: str) -> Markup:
@@ -199,6 +223,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         LEVEL_HELP=LEVEL_HELP,
         WEEKDAYS=WEEKDAYS,
         DAY_LABELS=DAY_LABELS,
+        MARKERS=MARKERS,
+        MAX_WEEKS=MAX_WEEKS,
         mask_url=mask_url,
         provider_of=provider_of,
     )
@@ -211,6 +237,19 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return rt.cfg
 
     # -- access control ----------------------------------------------------------------
+
+    @app.exception_handler(SaveConflict)
+    async def save_conflict(request: Request, exc: SaveConflict):
+        back = urlsplit(request.headers.get("referer", "")).path or "/"
+        if not back.startswith("/") or back.startswith("//"):
+            back = "/"
+        return page(
+            request,
+            "admin/conflict.html",
+            {"back": back, "error": None},
+            session(request),
+            status=409,
+        )
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -275,6 +314,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "nav": name.split("/")[-1].split(".")[0],
             "reload_error": rt.reload_error,
             "update": rt.updates.last if cfg().updates.check and rt.updates.last.update_available else None,
+            "rev": store.revision(),
         }
         base.update(ctx)
         return templates.TemplateResponse(request, name, base, status_code=status)
@@ -294,6 +334,9 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         form = await request.form()
         if not hmac.compare_digest(str(form.get("csrf", "")), str(sess.get("c", ""))):
             return None, None
+        rev = str(form.get("rev", ""))
+        if rev and rev != store.revision():
+            raise SaveConflict
         return sess, form
 
     async def save(mutate) -> AppConfig:
@@ -671,6 +714,39 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             sess,
         )
 
+    @app.post("/api/refresh/{cid}")
+    async def api_refresh_one(request: Request, cid: str):
+        """Refresh one calendar now; used by the live progress list on Overview."""
+        sess = session(request)
+        if not sess or not hmac.compare_digest(request.headers.get("X-CSRF", ""), sess.get("c", "")):
+            return Response(
+                '{"ok": false, "error": "Please sign in again."}', 403, media_type="application/json"
+            )
+        c = cfg()
+        if cid not in c.calendars:
+            return Response('{"ok": false, "error": "Unknown calendar."}', 404, media_type="application/json")
+
+        def work() -> dict:
+            g = rt.glimpse
+            with httpx.Client(
+                timeout=20.0, follow_redirects=True, headers={"User-Agent": USER_AGENT}
+            ) as client:
+                g.cache.refresh(cid, client)
+            st = g.cache.states[cid]
+            row = next(r for r in feed_rows() if r["id"] == cid)
+            return {
+                "ok": st.last_error is None,
+                "error": st.last_error,
+                "count": row["count"],
+                "updated": f"{fmt_day(row['updated'].date())}, {fmt_time(row['updated'])}"
+                if row["updated"]
+                else "",
+            }
+
+        import json as _json
+
+        return Response(_json.dumps(await run_in_threadpool(work)), media_type="application/json")
+
     @app.post("/refresh")
     async def refresh(request: Request):
         sess, form = await checked_form(request)
@@ -701,7 +777,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return calendars_page(request, sess)
 
     def _cal_values(form) -> dict[str, str]:
-        return {k: str(form.get(k, "")).strip() for k in ("name", "url", "label", "color", "group")}
+        return {k: str(form.get(k, "")).strip() for k in ("name", "url", "label", "color", "group", "marker")}
 
     @app.post("/calendars/test", response_class=HTMLResponse)
     async def calendars_test(request: Request):
@@ -730,6 +806,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 cid = d.add_calendar(v["name"], v["url"], v["label"] or None, v["color"] or None)
                 if v["group"] in d.groups:
                     d.set_calendar_group(cid, v["group"])
+                if v["marker"] in MARKERS:
+                    d.calendars[cid]["marker"] = v["marker"]
 
             await save(mutate)
         except ConfigError as exc:
@@ -773,6 +851,10 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node["color"] = v["color"]
             if v["url"]:
                 d.set_secret(node, "url", v["url"], _env_name("CAL", cid, "URL"))
+            if v["marker"] in MARKERS:
+                node["marker"] = v["marker"]
+            else:
+                node.pop("marker", None)
             d.set_calendar_group(cid, v["group"] if v["group"] in d.groups else None)
 
         try:
@@ -825,9 +907,25 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         name = str(form.get("name", "")).strip()[:60]
         members = {cid for cid in form.getlist("calendar") if cid in cfg().calendars}
 
+        extras = {k: str(form.get(k, "")).strip() for k in ("label", "color", "marker")}
+        use_color = form.get("use_color") == "on"
+
         def mutate(d: Draft) -> None:
             if name:
                 d.rename_group(gid, name)
+            node = d.groups[gid]
+            if extras["label"]:
+                node["label"] = extras["label"][:40]
+            else:
+                node.pop("label", None)
+            if use_color and extras["color"]:
+                node["color"] = extras["color"]
+            else:
+                node.pop("color", None)
+            if extras["marker"] in MARKERS:
+                node["marker"] = extras["marker"]
+            else:
+                node.pop("marker", None)
             for cid in d.calendars:
                 if cid in members:
                     d.set_calendar_group(cid, gid)
@@ -850,8 +948,29 @@ def create_admin_app(rt: Runtime) -> FastAPI:
 
     # -- sharing matrix --------------------------------------------------------------------
 
+    def audience_cards() -> list[dict]:
+        c = cfg()
+        out = []
+        for aid, aud in c.audiences.items():
+            out.append(
+                {
+                    "id": aid,
+                    "aud": aud,
+                    "link": public_link(aud),
+                    "people": [p for p in c.people.values() if p.audience == aid],
+                    "seen": ago(rt.seen.get(f"audience:{aid}")),
+                }
+            )
+        return out
+
     def sharing_page(request, sess, error=None, status=200):
-        return page(request, "admin/sharing.html", {"rows": sharing_rows(), "error": error}, sess, status)
+        return page(
+            request,
+            "admin/sharing.html",
+            {"rows": sharing_rows(), "cards": audience_cards(), "error": error, "VIEW_LABELS": VIEW_LABELS},
+            sess,
+            status,
+        )
 
     @app.get("/sharing", response_class=HTMLResponse)
     def sharing(request: Request):
@@ -924,11 +1043,12 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "admin/audience.html",
             {
                 "aid": aid,
+                "aid_current": aid,
                 "aud": aud,
                 "link": public_link(aud),
                 "feed": feed_link(aid) if aud.allow_ics else None,
                 "feeds": feed_rows(),
-                "range": fmt_range(lo, hi + timedelta(days=6)),
+                "range": browse_label(aud, lo, hi),
                 "people": people_rows(aid),
                 "seen": ago(rt.seen.get(f"audience:{aid}")),
                 "view_help": VIEW_HELP,
@@ -965,9 +1085,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         if limit and not (_TIME.match(start) and _TIME.match(end)):
             errors.append("Times should look like 08:00.")
 
-        def num(name: str, dflt: int) -> int:
+        def num(name: str, dflt: int) -> int | None:
+            if form.get(f"{name}_all") == "on":
+                return None  # no limit
             try:
-                return max(0, min(52, int(str(form.get(name, dflt)))))
+                return max(0, min(MAX_WEEKS, int(str(form.get(name, dflt)))))
             except ValueError:
                 return dflt
 
@@ -986,7 +1108,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node.pop("hours", None)
             node["weeks_ahead"] = num("weeks_ahead", 4)
             node["weeks_behind"] = num("weeks_behind", 1)
-            for flag in ("show_all_day_busy", "allow_excel", "allow_ics", "shared_link"):
+            for flag in ("show_all_day_busy", "allow_excel", "allow_ics", "shared_link", "group_names"):
                 node[flag] = form.get(flag) == "on"
             views = [v for v in VIEW_ORDER if v in form.getlist("view")] or ["week"]
             node["views"] = views

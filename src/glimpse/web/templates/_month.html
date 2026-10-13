@@ -2,8 +2,8 @@
 
   {% if view.legend or view.has_busy %}
   <ul class="legend">
-    {% for name, cls, custom in view.legend %}
-    <li><span class="swatch {{ cls }}" style="{% if custom %}--ev: {{ custom }};{% endif %}"></span>{{ name }}</li>
+    {% for it in view.legend %}
+    <li class="{{ it.color_class }}{% if not it.active %} quiet{% endif %}" style="{% if it.color %}--ev: {{ it.color }};{% endif %}"{% if not it.active %} title="Nothing in this {{ 'week' if view.days is defined else 'month' }}"{% endif %}>{% if it.marker %}<span class="mk-key" aria-hidden="true">{{ it.marker }}</span>{% else %}<span class="swatch"></span>{% endif %}{{ it.name }}</li>
     {% endfor %}
     {% if view.has_busy %}<li><span class="swatch busy"></span>Busy</li>{% endif %}
   </ul>
@@ -19,7 +19,7 @@
         {% if can_open %}<a class="mday" href="{{ base }}/week/{{ cell.day.isoformat() }}" aria-label="Week of {{ fmt_day(cell.day) }}">{{ cell.day.day }}</a>{% else %}<span class="mday">{{ cell.day.day }}</span>{% endif %}
         {% for chip in cell.chips %}
         <div class="chip {{ chip.color_class }}{% if chip.ev.all_day %} allday{% endif %}" style="{% if chip.color %}--ev: {{ chip.color }};{% endif %}" title="{{ chip.ev.title }}{% if chip.when %} · {{ fmt_time(chip.ev.start) }}–{{ fmt_time(chip.ev.end) }}{% endif %}{% if chip.ev.location %} · {{ chip.ev.location }}{% endif %}">
-          {% if chip.when %}<span class="when">{{ chip.when }}</span> {% endif %}<span class="t">{{ chip.ev.title }}</span>
+          {% if chip.ev.marker %}<span class="mk-in" aria-hidden="true">{{ chip.ev.marker }}</span>{% endif %}{% if chip.when %}<span class="when">{{ chip.when }}</span> {% endif %}<span class="t">{{ chip.ev.title }}</span>
         </div>
         {% endfor %}
         {% if cell.more %}{% if can_open %}<a class="more" href="{{ base }}/week/{{ cell.day.isoformat() }}">+{{ cell.more }} more</a>{% else %}<span class="more">+{{ cell.more }} more</span>{% endif %}{% endif %}
@@ -35,7 +35,7 @@
       <h2>{{ fmt_day(cell.day) }}{% if cell.is_today %} <span class="badge">Today</span>{% endif %}</h2>
       <ul>
         {% for chip in cell.chips %}
-        <li class="ev line {{ chip.color_class }}" style="{% if chip.color %}--ev: {{ chip.color }};{% endif %}">
+        <li class="ev line {{ chip.color_class }}" style="{% if chip.color %}--ev: {{ chip.color }};{% endif %}">{% if chip.ev.marker %}<span class="mk" aria-hidden="true">{{ chip.ev.marker }}</span>{% endif %}
           <span class="when">{% if chip.ev.all_day %}All day{% else %}{{ fmt_time(chip.ev.start) }}{% endif %}</span>
           <span class="t">{{ chip.ev.title }}</span>
         </li>

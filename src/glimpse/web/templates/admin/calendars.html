@@ -1,46 +1,5 @@
 {% extends "admin/base.html" %}
-{% block title %}Calendars · Glimpse settings
-{% if feeds %}
-<section class="panel" id="groups">
-  <h2>Groups</h2>
-  <p class="muted">Put related calendars together, e.g. &ldquo;Work&rdquo; for your university and lab calendars, then choose one level for the whole group on <a href="/sharing">Who sees what</a>. A calendar can be in one group.</p>
-  {% for gid, grp in cfg.groups.items() %}
-  <form method="post" action="/groups/{{ gid }}" class="form group-edit">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Name
-      <input type="text" name="name" value="{{ grp.name }}" maxlength="60" required>
-    </label>
-    <fieldset class="checks">
-      <legend>Calendars</legend>
-      {% for f in feeds %}
-      {% set elsewhere = f.group and f.group != gid %}
-      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}" {% if f.group == gid %}checked{% endif %}>
-        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if elsewhere %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
-      {% endfor %}
-    </fieldset>
-    <div class="actions">
-      <button type="submit" class="secondary">Save group</button>
-      <button type="submit" formaction="/groups/{{ gid }}/delete" class="link danger" data-confirm="Remove the group {{ grp.name }}? Its calendars stay.">Remove group</button>
-    </div>
-  </form>
-  {% endfor %}
-  <form method="post" action="/groups/add" class="form group-edit new">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>New group
-      <input type="text" name="name" placeholder="Work" maxlength="60" required>
-    </label>
-    <fieldset class="checks">
-      <legend>Calendars</legend>
-      {% for f in feeds %}
-      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}">
-        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if f.group %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
-      {% endfor %}
-    </fieldset>
-    <div class="actions"><button type="submit">Create group</button></div>
-  </form>
-</section>
-{% endif %}
-{% endblock %}
+{% block title %}Calendars · Glimpse settings{% endblock %}
 {% block content %}
 <header class="pagehead">
   <div>
@@ -56,7 +15,7 @@
     <tbody>
     {% for f in feeds %}
       <tr>
-        <td><span class="dot" style="--ev: {{ f.color }}"></span><strong>{{ f.cal.name }}</strong></td>
+        <td><span class="dot" style="--ev: {{ f.color }}"></span><strong>{{ f.cal.name }}</strong>{% if f.cal.marker %} <span class="mk-admin" style="--ev: {{ f.color }}" title="{{ f.cal.marker }}">{{ MARKERS[f.cal.marker] }}</span>{% endif %}</td>
         {% if cfg.groups %}<td class="muted">{{ cfg.groups[f.group].name if f.group else '–' }}</td>{% endif %}
         <td class="muted">{{ f.cal.label or '–' }}</td>
         <td class="mono muted">{{ f.provider }} · {{ f.masked }}</td>
@@ -108,6 +67,13 @@
     <label>Colour
       <input type="color" name="color" value="{{ form.color }}">
     </label>
+    <label>Shape <span class="muted">(optional)</span>
+      <select name="marker" class="marker-select">
+        <option value="">None (colour only)</option>
+        {% for key, glyph in MARKERS.items() %}<option value="{{ key }}" {% if form.marker == key %}selected{% endif %}>{{ glyph }} {{ key }}</option>{% endfor %}
+      </select>
+      <span class="hint">Shown in the corner of its events and in the legend, so it's easy to tell calendars apart without relying on colour.</span>
+    </label>
     {% if cfg.groups %}
     <label>Group
       <select name="group">
@@ -130,9 +96,26 @@
   {% for gid, grp in cfg.groups.items() %}
   <form method="post" action="/groups/{{ gid }}" class="form group-edit">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Name
-      <input type="text" name="name" value="{{ grp.name }}" maxlength="60" required>
-    </label>
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <div class="grid2">
+      <label>Name
+        <input type="text" name="name" value="{{ grp.name }}" maxlength="60" required>
+      </label>
+      <label><span>Label <span class="muted">(optional)</span></span>
+        <input type="text" name="label" value="{{ grp.label or '' }}" placeholder="e.g. Work" maxlength="40">
+        <span class="hint">For audiences that see group names at the &ldquo;label&rdquo; level.</span>
+      </label>
+      <label><span>Colour <span class="muted">(optional)</span></span>
+        <span class="inline"><input type="checkbox" name="use_color" {% if grp.color %}checked{% endif %} aria-label="Use a group colour"> <input type="color" name="color" value="{{ grp.color or '#3b6fd8' }}"></span>
+        <span class="hint">Unticked: the first calendar's colour.</span>
+      </label>
+      <label>Shape
+        <select name="marker">
+          <option value="">Same as the first calendar</option>
+          {% for key, glyph in MARKERS.items() %}<option value="{{ key }}" {% if grp.marker == key %}selected{% endif %}>{{ glyph }} {{ key }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
     <fieldset class="checks">
       <legend>Calendars</legend>
       {% for f in feeds %}

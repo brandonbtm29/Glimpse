@@ -39,6 +39,76 @@
     }
   });
 
+  // Overview: refresh each calendar with a live spinner / tick / cross, and a Stop button.
+  var live = document.querySelector("form[data-live-refresh]");
+  var rows = document.querySelectorAll("tr[data-cid]");
+  if (live && rows.length && window.fetch && window.AbortController) {
+    live.addEventListener("submit", function (e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      var btn = live.querySelector("button");
+      var csrf = live.querySelector("input[name=csrf]").value;
+      var box = document.querySelector(".refresh-progress");
+      var text = box.querySelector(".rp-text");
+      var stop = box.querySelector(".rp-stop");
+      var ctrl = new AbortController();
+      var queue = Array.prototype.slice.call(rows);
+      var total = queue.length, done = 0, failed = 0, stopped = false;
+      btn.disabled = true;
+      box.hidden = false;
+      stop.hidden = false;
+      stop.disabled = false;
+      var tell = function () {
+        text.textContent = stopped ? "Stopped: " + done + " of " + total + " checked"
+          : done < total ? "Checking " + (done + 1 > total ? total : done + 1) + " of " + total + "\u2026"
+          : (failed ? failed + " problem" + (failed === 1 ? "" : "s") : "All calendars OK");
+      };
+      queue.forEach(function (tr) {
+        tr.querySelector(".st").innerHTML = '<span class="spin" aria-label="Checking"></span>';
+        var err = document.querySelector('tr[data-err="' + tr.getAttribute("data-cid") + '"]');
+        if (err) err.remove();
+      });
+      tell();
+      stop.onclick = function () {
+        stopped = true; ctrl.abort(); stop.hidden = true;
+        queue.forEach(function (tr) { tr.querySelector(".st").innerHTML = '<span class="status wait">Skipped</span>'; });
+        queue = [];
+        tell(); btn.disabled = false;
+      };
+      var finish = function (tr, data) {
+        var st = tr.querySelector(".st");
+        if (data.ok) {
+          st.innerHTML = '<span class="status ok">\u2713 OK</span>';
+        } else {
+          failed += 1;
+          st.innerHTML = '<span class="status bad">\u2717 Problem</span>';
+          var row = document.createElement("tr");
+          row.className = "errrow";
+          var td = document.createElement("td");
+          td.colSpan = 4;
+          td.textContent = data.error || "Couldn't download this calendar.";
+          row.appendChild(td);
+          tr.parentNode.insertBefore(row, tr.nextSibling);
+        }
+        if (data.count !== undefined) tr.querySelector(".cnt").textContent = data.count;
+        if (data.updated) tr.querySelector(".upd").textContent = data.updated;
+      };
+      var next = function () {
+        var tr = queue.shift();
+        if (!tr) return Promise.resolve();
+        return fetch("/api/refresh/" + encodeURIComponent(tr.getAttribute("data-cid")), {
+          method: "POST", headers: { "X-CSRF": csrf }, signal: ctrl.signal, credentials: "same-origin"
+        }).then(function (r) { return r.json(); })
+          .then(function (data) { finish(tr, data); })
+          .catch(function (err) { if (err.name !== "AbortError") finish(tr, { ok: false, error: "No answer from Glimpse." }); })
+          .then(function () { if (!stopped) { done += 1; tell(); } return next(); });
+      };
+      Promise.all([next(), next(), next()]).then(function () {
+        if (!stopped) { stop.hidden = true; btn.disabled = false; tell(); }
+      });
+    }, true);
+  }
+
   // Select a link's text when its box is clicked, for easy manual copying.
   document.addEventListener("focusin", function (e) {
     if (e.target.matches(".copyrow input[readonly]")) e.target.select();

@@ -6,7 +6,7 @@ from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from .config import AppConfig, AudienceCfg
+from .config import ALL_WEEKS, AppConfig, AudienceCfg
 from .events import Event, collect_events
 from .policy import VisibleEvent, visible_events
 from .sources import FeedCache
@@ -42,8 +42,8 @@ def allowed_week_bounds(audience: AudienceCfg, today: date, cfg: AppConfig) -> t
     """First and last week start this audience may look at."""
     this_week = week_start(today, cfg)
     return (
-        this_week - timedelta(weeks=audience.weeks_behind),
-        this_week + timedelta(weeks=audience.weeks_ahead),
+        this_week - timedelta(weeks=ALL_WEEKS if audience.weeks_behind is None else audience.weeks_behind),
+        this_week + timedelta(weeks=ALL_WEEKS if audience.weeks_ahead is None else audience.weeks_ahead),
     )
 
 

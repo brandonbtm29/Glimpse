@@ -63,6 +63,7 @@
   </div>
   <form method="post" action="/rules/{{ item.i }}" class="form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
     {{ rule_fields({"name": r.name or "", "match": r.match | join("\n"), "fields": r.fields, "action": r.action, "calendars": r.calendars, "enabled": r.enabled}, item.i) }}
     <div class="actions">
       <button type="submit" class="secondary">Save rule</button>

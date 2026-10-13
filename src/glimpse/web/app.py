@@ -45,6 +45,7 @@ log = logging.getLogger("glimpse.web")
 HERE = Path(__file__).parent
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TZ_COOKIE = "glimpse_tz"
+FEED_WEEKS_AHEAD, FEED_WEEKS_BEHIND = 104, 52
 VIEW_LABELS = {"week": "Week", "month": "Month", "quarter": "3 months", "year": "Year"}
 COMMON_ZONES = [
     "Pacific/Honolulu",
@@ -250,6 +251,7 @@ def create_app(
             "has_password": bool(v.password_hash),
             "freshness": freshness(),
             "person": v.person.name if v.person else None,
+            "owner_possessive": g.cfg.owner_possessive,
             **zone_ctx(request, v, tz),
         }
 
@@ -405,12 +407,24 @@ def create_app(
         nxt = safe_next(v, next)
         ip = client_ip(request)
         ctx = {"aud": v.audience, "base": v.base, "next": nxt, "person": v.person}
-        if limiter.blocked(v.key, ip):
-            ctx["error"] = "Too many attempts. Please wait a few minutes and try again."
+
+        def locked() -> Response:
+            mins = max(1, round(limiter.retry_after(v.key, ip) / 60))
+            ctx["error"] = (
+                f"Too many attempts. Please wait about {mins} minute{'s' if mins != 1 else ''} and try again."
+            )
             return templates.TemplateResponse(request, "login.html", ctx, status_code=429)
+
+        if limiter.blocked(v.key, ip):
+            return locked()
         if not verify_password(v, password):
             limiter.failed(v.key, ip)
-            ctx["error"] = "That password didn't work."
+            if limiter.blocked(v.key, ip):
+                return locked()
+            left = limiter.remaining(v.key, ip)
+            ctx["error"] = "That password didn't work." + (
+                f" {left} more tr{'y' if left == 1 else 'ies'} before a 15-minute wait." if left <= 2 else ""
+            )
             return templates.TemplateResponse(request, "login.html", ctx, status_code=401)
         resp = RedirectResponse(f"{v.base}/{nxt}" if nxt else v.base, status_code=303)
         resp.set_cookie(
@@ -489,6 +503,12 @@ def create_app(
             return not_found(request)
         seen.touch(v.seen_key + ":feed")
         lo, hi = allowed_week_bounds(aud, g.today(), g.cfg)
+        this = week_start(g.today(), g.cfg)
+        # Calendar apps re-download the whole feed often: keep it to about two years ahead, one back.
+        lo, hi = (
+            max(lo, this - timedelta(weeks=FEED_WEEKS_BEHIND)),
+            min(hi, this + timedelta(weeks=FEED_WEEKS_AHEAD)),
+        )
         s, _ = week_range(lo, g.cfg)
         _, e = week_range(hi, g.cfg)
         body = to_ics(aud.title, g.view(aud, s, e), g.cfg.refresh_minutes)

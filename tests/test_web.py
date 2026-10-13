@@ -134,8 +134,12 @@ def test_changing_password_logs_everyone_out(client, glimpse):
 
 
 def test_rate_limit_blocks_after_five_failures(client):
-    for _ in range(5):
-        assert login(client, "wrong").status_code == 401
+    for _ in range(4):
+        r = login(client, "wrong")
+        assert r.status_code == 401
+    assert "1 more try before a 15-minute wait" in r.text
+    r = login(client, "wrong")  # the fifth wrong password locks it straight away
+    assert r.status_code == 429 and "wait about 15 minutes" in r.text
     r = login(client)  # even the right password is refused while blocked
     assert r.status_code == 429
 

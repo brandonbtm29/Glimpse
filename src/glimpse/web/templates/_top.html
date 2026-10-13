@@ -1,4 +1,11 @@
-{# Page header shared by every schedule view: title, period, view switcher, prev/next. #}
+{# Page header shared by every schedule view: welcome, title, period, view switcher, prev/next. #}
+<div class="welcome">
+  <svg class="logo" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><rect x="3" y="5" width="26" height="24" rx="5" fill="#3b6fd8"/><rect x="3" y="5" width="26" height="7" rx="3" fill="#2a55b0"/><circle cx="16" cy="20" r="4" fill="#fff"/></svg>
+  <div>
+    <p class="hello">Welcome{% if person %}, {{ person }}{% endif %}!</p>
+    <p class="whose">{% if owner_possessive %}{{ owner_possessive }} schedule, shared with you{% else %}A schedule shared with you{% endif %} through <span class="brand">Glimpse</span></p>
+  </div>
+</div>
 <header class="top">
   <div class="heading">
     <h1>{{ aud.title }}</h1>

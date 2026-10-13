@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from ..config import AppConfig, AudienceCfg
 from ..policy import VisibleEvent
-from .week import DAY_NAMES, MONTHS, PALETTE_SIZE, _color_for, fmt_time
+from .week import DAY_NAMES, MONTHS, PALETTE_SIZE, LegendItem, _color_for, build_legend, fmt_time
 
 MONTH_NAMES = [
     "January",
@@ -126,7 +126,7 @@ class MonthView:
     first: date
     weeks: list[list[MonthCell]]
     dows: list[str]
-    legend: list[tuple[str, str, str | None]]
+    legend: list[LegendItem]
     has_busy: bool
     tz: ZoneInfo
 
@@ -135,19 +135,13 @@ class MonthView:
         return f"{MONTH_NAMES[self.first.month - 1]} {self.first.year}"
 
 
-def _legend_and_chips(cfg: AppConfig, events: list[VisibleEvent]):
-    used: dict[str, tuple[str, str | None]] = {}
-    has_busy = False
+def _legend_and_chips(cfg: AppConfig, audience: AudienceCfg, events: list[VisibleEvent]):
     chips = []
     for ev in events:
         cls, custom = _color_for(cfg, ev)
-        if cls == "busy":
-            has_busy = True
-        elif ev.calendar_name:
-            used.setdefault(ev.calendar_name, (cls, custom))
         chips.append(Chip(ev, cls, custom))
-    legend = [(n, c, x) for n, (c, x) in used.items()]
-    return chips, legend, has_busy
+    has_busy = any(c.color_class == "busy" for c in chips)
+    return chips, build_legend(cfg, audience, events), has_busy
 
 
 def build_month(
@@ -163,7 +157,7 @@ def build_month(
     """``allowed`` is the first and last day this audience may see (inclusive)."""
     month_end = date(first.year + first.month // 12, first.month % 12 + 1, 1)
     start = _week_start(first, cfg.week_starts)
-    chips, legend, has_busy = _legend_and_chips(cfg, events)
+    chips, legend, has_busy = _legend_and_chips(cfg, audience, events)
     weeks: list[list[MonthCell]] = []
     d = start
     while d < month_end:

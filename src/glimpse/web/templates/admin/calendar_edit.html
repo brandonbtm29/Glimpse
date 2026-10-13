@@ -20,6 +20,7 @@
   <h2>Details</h2>
   <form method="post" action="/calendars/{{ row.id }}" class="form grid2">
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
     <label>Name
       <input type="text" name="name" value="{{ row.cal.name }}" maxlength="60" required>
     </label>
@@ -29,6 +30,13 @@
     </label>
     <label>Colour
       <input type="color" name="color" value="{{ row.color }}">
+    </label>
+    <label>Shape <span class="muted">(optional)</span>
+      <select name="marker" class="marker-select">
+        <option value="">None (colour only)</option>
+        {% for key, glyph in MARKERS.items() %}<option value="{{ key }}" {% if row.cal.marker == key %}selected{% endif %}>{{ glyph }} {{ key }}</option>{% endfor %}
+      </select>
+      <span class="hint">Shown in the corner of its events and in the legend, so it's easy to tell calendars apart without relying on colour.</span>
     </label>
     {% if cfg.groups %}
     <label>Group

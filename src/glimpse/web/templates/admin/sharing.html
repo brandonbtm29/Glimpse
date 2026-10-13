@@ -8,6 +8,32 @@
   </div>
 </header>
 
+{% if cards %}
+<section class="aud-cards" aria-label="Audiences">
+  {% for c in cards %}
+  <article class="aud-card">
+    <div class="aud-head">
+      <h2><a href="/audiences/{{ c.id }}">{{ c.aud.title }}</a></h2>
+      <span class="tag {{ 'lock' if c.aud.password_hash else 'open' }}">{{ 'Password' if c.aud.password_hash else 'Link only' }}</span>
+    </div>
+    <p class="muted small">
+      {{ c.people | length }} {{ 'person' if c.people | length == 1 else 'people' }}{% if c.people %} ({{ c.people | map(attribute='name') | join(', ') }}){% endif %}
+      · {% for v in c.aud.views %}{{ VIEW_LABELS[v] }}{{ ', ' if not loop.last }}{% endfor %}
+      · {% if c.aud.hours %}{{ fmt_time(c.aud.hours.start) }}–{{ fmt_time(c.aud.hours.end) }}{% else %}any time{% endif %}
+      {% if not c.aud.shared_link %}· shared link off{% endif %}
+    </p>
+    <div class="actions">
+      <a class="button small" href="/audiences/{{ c.id }}">Manage</a>
+      <a class="button secondary small" href="/preview?view_as={{ c.id }}">Preview</a>
+      {% if c.aud.shared_link %}<button type="button" class="secondary small" data-copy="{{ c.link }}">Copy link</button>{% endif %}
+    </div>
+  </article>
+  {% endfor %}
+  <a class="aud-card add" href="#new-audience"><span>+ New audience</span></a>
+</section>
+{% endif %}
+
+<h2 class="subhead">Calendar by audience</h2>
 <ul class="levels-key">
   {% for lv in LEVELS %}<li><span class="lvl lvl-{{ lv }}">{{ lv }}</span> {{ LEVEL_HELP[lv] }}</li>{% endfor %}
 </ul>
@@ -15,6 +41,7 @@
 {% if cfg.audiences %}
 <form method="post" action="/sharing" class="panel matrix-wrap">
   <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="rev" value="{{ rev }}">
   <div class="scroll-x">
   <table class="matrix">
     <thead>
@@ -93,7 +120,7 @@
 </form>
 {% endif %}
 
-<section class="panel">
+<section class="panel" id="new-audience">
   <h2>New audience</h2>
   <p class="muted">An audience is a group of people who share one link, e.g. &ldquo;Partner&rdquo;, &ldquo;Lab group&rdquo; or &ldquo;Family&rdquo;.</p>
   <form method="post" action="/audiences/add" class="form inline">

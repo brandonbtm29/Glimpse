@@ -30,6 +30,8 @@ admin:
 #   name   shown in the legend and in full/title views
 #   label  shown instead of the title at the `label` level (default: name)
 #   color  optional hex colour, e.g. "#2f9e44"
+#   marker optional shape on its events and in the legend: circle, square, triangle,
+#          diamond, star, ring, cross or heart (helps when colours are hard to tell apart)
 # ---------------------------------------------------------------------------
 calendars:
   personal:
@@ -38,6 +40,7 @@ calendars:
   lab:
     name: Lab
     url: ${OUTLOOK_LAB_ICS}
+    marker: triangle
   classes:
     name: Classes
     label: Class
@@ -67,6 +70,7 @@ groups:
   work:
     name: Work
     calendars: [lab, classes]
+    # label, color and marker are used by audiences with `group_names: true`
 
 # ---------------------------------------------------------------------------
 # Privacy rules (optional): matching events are shown as Busy (or hidden) to
@@ -97,7 +101,7 @@ audiences:
     slug: ${PARTNER_SLUG}
     password_hash: ${PARTNER_PW_HASH}   # remove this line for a link-only page
     default: full
-    weeks_ahead: 6                      # how far ahead they can browse
+    weeks_ahead: 6                      # how far ahead they can browse (0-104, or null for all)
     weeks_behind: 1
     calendars:
       lab: title
@@ -111,6 +115,7 @@ audiences:
       work: title                       # every Work calendar at `title`...
     weeks_ahead: 3
     weeks_behind: 0
+    group_names: true                   # they see "Work" rather than "Lab" and "Classes"
     hours: { days: [mon, tue, wed, thu, fri], start: "08:00", end: "18:00" }
     show_all_day_busy: false            # all-day events at `busy` level are usually reminders
     allow_excel: true

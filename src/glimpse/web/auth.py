@@ -77,10 +77,10 @@ def feed_token(cfg: AppConfig, who: str | Viewer) -> str:
 
 
 class LoginLimiter:
-    """5 failed attempts per IP per minute; 20 per audience per 15 minutes."""
+    """5 failed attempts per device (IP) and 20 per link in any 15 minutes; then wait."""
 
     def __init__(
-        self, per_ip: int = 5, ip_window: float = 60, per_audience: int = 20, audience_window: float = 900
+        self, per_ip: int = 5, ip_window: float = 900, per_audience: int = 20, audience_window: float = 900
     ):
         self.per_ip, self.ip_window = per_ip, ip_window
         self.per_audience, self.audience_window = per_audience, audience_window
@@ -106,3 +106,23 @@ class LoginLimiter:
         with self._lock:
             self._ip[ip].append(now)
             self._aud[audience_id].append(now)
+
+    def retry_after(self, audience_id: str, ip: str) -> int:
+        """Seconds until a blocked visitor may try again (0 if not blocked)."""
+        now = time.monotonic()
+        with self._lock:
+            waits = []
+            qi, qa = self._ip[ip], self._aud[audience_id]
+            if len(qi) >= self.per_ip:
+                waits.append(self.ip_window - (now - qi[-self.per_ip]))
+            if len(qa) >= self.per_audience:
+                waits.append(self.audience_window - (now - qa[-self.per_audience]))
+        return max(0, int(max(waits, default=0)) + 1) if waits else 0
+
+    def remaining(self, audience_id: str, ip: str) -> int:
+        """Attempts left before this device is made to wait."""
+        now = time.monotonic()
+        with self._lock:
+            qi = self._ip[ip]
+            self._trim(qi, self.ip_window, now)
+            return max(0, self.per_ip - len(qi))

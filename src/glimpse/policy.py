@@ -37,6 +37,7 @@ class VisibleEvent:
     location: str = ""
     notes: str = ""
     copies: int = 1  # >1 when duplicates on several calendars were merged (shown only to you)
+    marker: str = ""  # shape glyph for the calendar (or group), if one is set
 
 
 def _strip_tags(text: str, tags: list[str]) -> str:
@@ -227,7 +228,7 @@ def visible_events(
             parts = [(ev.start, ev.end)]
         parts = [(s.astimezone(dtz), e.astimezone(dtz)) for s, e in parts]
 
-        cal = cfg.calendars[ev.calendar_id]
+        cal = cfg.display_for(audience, ev.calendar_id)
         for s, e in parts:
             s, e = max(s, range_start), min(e, range_end)
             if s >= e:
@@ -240,12 +241,13 @@ def visible_events(
                     all_day=ev.all_day,
                     level=level,
                     title=_strip_tags(ev.summary, tags) or "(no title)",
-                    calendar_id=ev.calendar_id,
+                    calendar_id=cal.palette_id,
                     calendar_name=cal.name,
                     color=cal.color,
                     location=_strip_tags(ev.location, tags),
                     notes=_strip_tags(ev.description, tags)[:MAX_NOTES],
                     copies=copies,
+                    marker=cal.glyph,
                 )
             elif level is Level.TITLE:
                 ve = VisibleEvent(
@@ -255,22 +257,24 @@ def visible_events(
                     all_day=ev.all_day,
                     level=level,
                     title=_strip_tags(ev.summary, tags) or "(no title)",
-                    calendar_id=ev.calendar_id,
+                    calendar_id=cal.palette_id,
                     calendar_name=cal.name,
                     color=cal.color,
                     copies=copies,
+                    marker=cal.glyph,
                 )
             elif level is Level.LABEL:
                 ve = VisibleEvent(
-                    key=_opaque("label", cal.display_label, s.isoformat(), e.isoformat()),
+                    key=_opaque("label", cal.label, s.isoformat(), e.isoformat()),
                     start=s,
                     end=e,
                     all_day=ev.all_day,
                     level=level,
-                    title=cal.display_label,
-                    calendar_id=ev.calendar_id,
-                    calendar_name=cal.display_label,
+                    title=cal.label,
+                    calendar_id=cal.palette_id,
+                    calendar_name=cal.label,
                     color=cal.color,
+                    marker=cal.glyph,
                 )
             else:  # BUSY
                 ve = VisibleEvent(

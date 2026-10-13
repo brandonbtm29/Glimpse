@@ -94,7 +94,7 @@ class WeekView:
     days: list[DayView]
     hour_start: int
     hour_end: int
-    legend: list[tuple[str, str, str | None]]  # (name, css class, custom colour)
+    legend: list[LegendItem]
     has_busy: bool
     tz: ZoneInfo | None = None  # zone the times are shown in
     owner_tz: ZoneInfo | None = None  # the calendar owner's zone, when different
@@ -123,7 +123,44 @@ def _color_for(cfg: AppConfig, ev: VisibleEvent) -> tuple[str, str | None]:
     if ev.level is Level.BUSY or ev.calendar_id is None:
         return "busy", None
     idx = list(cfg.calendars).index(ev.calendar_id) % PALETTE_SIZE
-    return f"c{idx}", cfg.calendars[ev.calendar_id].color
+    return f"c{idx}", ev.color
+
+
+@dataclass
+class LegendItem:
+    name: str
+    color_class: str
+    color: str | None
+    marker: str
+    active: bool  # has something in the period shown
+
+
+SHOWN_LEVELS = (Level.FULL, Level.TITLE, Level.LABEL)
+
+
+def build_legend(cfg: AppConfig, audience: AudienceCfg, events: list[VisibleEvent]) -> list[LegendItem]:
+    """Every calendar (or group) this audience can see by name, in config order.
+
+    Ones with nothing in the period are still listed (faded), so a quiet calendar
+    doesn't look missing. Busy-only and hidden calendars are never named.
+    """
+    used = {ev.calendar_name for ev in events if ev.level is not Level.BUSY and ev.calendar_name}
+    order = list(cfg.calendars)
+    items: dict[str, LegendItem] = {}
+    for cid in order:
+        level = cfg.level_for(audience, cid)
+        if level not in SHOWN_LEVELS:
+            continue
+        d = cfg.display_for(audience, cid)
+        name = d.label if level is Level.LABEL else d.name
+        if name not in items:
+            idx = order.index(d.palette_id) % PALETTE_SIZE
+            items[name] = LegendItem(name, f"c{idx}", d.color, d.glyph, name in used)
+    for ev in events:  # e.g. a label shared by several calendars, or levels raised per event
+        if ev.level is not Level.BUSY and ev.calendar_name and ev.calendar_name not in items:
+            cls, custom = _color_for(cfg, ev)
+            items[ev.calendar_name] = LegendItem(ev.calendar_name, cls, custom, ev.marker, True)
+    return list(items.values())
 
 
 def _hour_bounds(audience: AudienceCfg, blocks: list[Block]) -> tuple[int, int]:
@@ -189,14 +226,10 @@ def build_week(
         days = [d for d in days if d.day.weekday() in allowed]
 
     timed_all: list[Block] = []
-    used: dict[str, tuple[str, str | None]] = {}
     has_busy = False
     for ev in events:
         cls, custom = _color_for(cfg, ev)
-        if cls == "busy":
-            has_busy = True
-        elif ev.calendar_name:
-            used.setdefault(ev.calendar_name, (cls, custom))
+        has_busy = has_busy or cls == "busy"
         for dv in days:
             day0 = datetime.combine(dv.day, time.min, tzinfo=tz)
             day1 = datetime.combine(dv.day + timedelta(days=1), time.min, tzinfo=tz)
@@ -228,7 +261,7 @@ def build_week(
         dv.timed = visible
         _layout_columns(dv.timed)
 
-    legend = [(name, cls, custom) for name, (cls, custom) in used.items()]
+    legend = build_legend(cfg, audience, events)
     return WeekView(
         title=audience.title,
         start=start,
