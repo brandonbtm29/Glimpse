@@ -3,6 +3,7 @@
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -197,6 +198,9 @@ def test_yes_flag_fallback_for_old_clients(monkeypatch):
     assert seen[-1] == ["serve", "--bg", "--https=8443", "http://127.0.0.1:8001"]
 
 
+posix_only = pytest.mark.skipif(sys.platform == "win32", reason="fake Tailscale CLI is a bash script")
+
+
 def _fake_cli(tmp_path, monkeypatch, body: str) -> None:
     script = tmp_path / "tailscale"
     script.write_text("#!/usr/bin/env bash\n" + body)
@@ -204,6 +208,7 @@ def _fake_cli(tmp_path, monkeypatch, body: str) -> None:
     monkeypatch.setattr(tailscale, "find_cli", lambda: str(script))
 
 
+@posix_only
 def test_run_returns_early_with_approval_url(tmp_path, monkeypatch):
     _fake_cli(
         tmp_path,
@@ -218,6 +223,7 @@ def test_run_returns_early_with_approval_url(tmp_path, monkeypatch):
     assert not res.ok and res.approve_url == "https://login.tailscale.com/f/serve?node=n1"
 
 
+@posix_only
 def test_run_timeout_and_success(tmp_path, monkeypatch):
     _fake_cli(tmp_path, monkeypatch, "sleep 5\n")
     res = tailscale._run(["x"], timeout=0.5)
