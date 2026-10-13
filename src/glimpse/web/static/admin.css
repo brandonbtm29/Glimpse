@@ -281,3 +281,28 @@ button.link.danger { color: #c93a5c; background: none; }
 .spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+
+/* Group board (Calendars page) */
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; align-items: start; }
+.lane { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 120px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s, background .15s; }
+.lane.loose { border-style: dashed; }
+.lane.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); }
+.lane-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lane h3 { font-size: 14px; margin: 0; }
+.lane-settings summary { cursor: pointer; font-size: 12.5px; color: var(--accent); list-style: none; }
+.lane-settings summary::-webkit-details-marker { display: none; }
+.lane-settings[open] { position: relative; }
+.lane-settings[open] > form { position: absolute; right: 0; top: 22px; z-index: 5; width: 280px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.12); display: flex; flex-direction: column; gap: 10px; }
+.lane-cards { display: flex; flex-direction: column; gap: 6px; }
+.cal-card { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--ev); border-radius: 8px; padding: 6px 8px; font-size: 13.5px; cursor: grab; }
+.cal-card.dragging { opacity: .45; }
+.cal-card .grip { color: var(--faint); letter-spacing: -3px; font-size: 12px; }
+.cal-card .dot { background: var(--ev); }
+.cal-card .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.cal-card .move-form { margin: 0; }
+.cal-card select.move { font-size: 12px; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); max-width: 96px; }
+.lane-empty { margin: 0; font-size: 12px; color: var(--faint); text-align: center; padding: 6px; }
+.lane-cards .cal-card ~ .lane-empty { display: none; }
+.lane.new { border-style: dashed; background: transparent; justify-content: center; }
+.lane.new input[type=text] { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
+.recolor { margin: 0 0 10px; }

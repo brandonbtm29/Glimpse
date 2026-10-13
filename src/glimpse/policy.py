@@ -75,7 +75,7 @@ def rule_matches(rule: RuleCfg, ev: Event) -> bool:
     return any(pattern.search(" ".join(fold(texts[f]).split())) for f in rule.fields)
 
 
-def restriction(cfg: AppConfig, ev: Event) -> Level:
+def restriction(cfg: AppConfig, ev: Event, audience: AudienceCfg | None = None) -> Level:
     """The most this event may ever reveal, from tags, the Private flag and keyword rules.
 
     FULL means "no restriction". These apply to every audience and only reduce detail.
@@ -87,7 +87,10 @@ def restriction(cfg: AppConfig, ev: Event) -> Level:
     cap = Level.FULL
     if _contains(blob, ov.private_tag) or (ov.honor_private_flag and ev.private):
         cap = Level.BUSY
+    aid = cfg.audience_id(audience) if audience is not None else None
     for rule in cfg.rules:
+        if aid is not None and aid in rule.except_audiences:
+            continue
         if rule_matches(rule, ev):
             cap = cap.at_most(rule.level)
             if cap is Level.HIDDEN:
@@ -97,7 +100,7 @@ def restriction(cfg: AppConfig, ev: Event) -> Level:
 
 def effective_level(cfg: AppConfig, audience: AudienceCfg, ev: Event) -> Level:
     """The level an event is shown at: its calendar's level, capped by any restriction."""
-    return cfg.level_for(audience, ev.calendar_id).at_most(restriction(cfg, ev))
+    return cfg.level_for(audience, ev.calendar_id).at_most(restriction(cfg, ev, audience))
 
 
 # --- duplicate merging ----------------------------------------------------------------
@@ -114,7 +117,7 @@ class Cluster:
         best = max(self.copies, key=lambda e: cfg.level_for(audience, e.calendar_id).rank)
         level = cfg.level_for(audience, best.calendar_id)
         for ev in self.copies:
-            level = level.at_most(restriction(cfg, ev))
+            level = level.at_most(restriction(cfg, ev, audience))
         if len(self.copies) > 1 and not all(e.free for e in self.copies):
             best = replace(best, free=False)
         return best, level

@@ -15,7 +15,20 @@ from .periods import MonthView, fmt_hours
 from .week import WeekView, fmt_day, fmt_time
 
 # Light tints that work as cell fills; index matches the CSS palette c0..c7.
-PALETTE = ["DCE8FB", "DDF3E4", "FCE7D6", "EDE3FA", "FBE0E6", "D9F2F2", "F6EFCF", "E6E9EE"]
+PALETTE = [
+    "DCE8FB",
+    "DDF3E4",
+    "FCE7D6",
+    "EDE3FA",
+    "FBE0E6",
+    "D9F2F2",
+    "F6EFCF",
+    "E6E9EE",
+    "E6F2D5",
+    "D7EFFB",
+    "F0E0D2",
+    "F5DDF7",
+]
 BUSY = "E3E5E8"
 SLOT_MIN = 30
 

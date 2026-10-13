@@ -10,12 +10,19 @@
 
 {% if feeds %}
 <section class="panel">
+  {% if feeds | length > 1 %}
+  <form method="post" action="/recolor-calendars" class="inline-form recolor" data-confirm="Give every calendar its own colour? This replaces the colours you picked.">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="secondary small">Give every calendar its own colour</button>
+    <span class="hint">Picks {{ feeds | length }} different colours from a palette of 12.</span>
+  </form>
+  {% endif %}
   <table class="table">
     <thead><tr><th>Name</th>{% if cfg.groups %}<th>Group</th>{% endif %}<th>Label</th><th>Link</th><th>Status</th><th class="num">This week</th><th></th></tr></thead>
     <tbody>
     {% for f in feeds %}
       <tr>
-        <td><span class="dot" style="--ev: {{ f.color }}"></span><strong>{{ f.cal.name }}</strong>{% if f.cal.marker %} <span class="mk-admin" style="--ev: {{ f.color }}" title="{{ f.cal.marker }}">{{ MARKERS[f.cal.marker] }}</span>{% endif %}</td>
+        <td><span class="dot" style="--ev: {{ f.color }}"></span><strong>{{ f.cal.name }}</strong>{% if f.cal.marker %} <span class="mk-admin" style="--ev: {{ f.color }}" title="{{ f.cal.marker }}">{{ marker_glyph(f.cal.marker) }}</span>{% endif %}</td>
         {% if cfg.groups %}<td class="muted">{{ cfg.groups[f.group].name if f.group else '–' }}</td>{% endif %}
         <td class="muted">{{ f.cal.label or '–' }}</td>
         <td class="mono muted">{{ f.provider }} · {{ f.masked }}</td>
@@ -67,13 +74,7 @@
     <label>Colour
       <input type="color" name="color" value="{{ form.color }}">
     </label>
-    <label>Shape <span class="muted">(optional)</span>
-      <select name="marker" class="marker-select">
-        <option value="">None (colour only)</option>
-        {% for key, glyph in MARKERS.items() %}<option value="{{ key }}" {% if form.marker == key %}selected{% endif %}>{{ glyph }} {{ key }}</option>{% endfor %}
-      </select>
-      <span class="hint">Shown in the corner of its events and in the legend, so it's easy to tell calendars apart without relying on colour.</span>
-    </label>
+    {% set marker_value = form.marker %}{% include "admin/_marker.html" %}
     {% if cfg.groups %}
     <label>Group
       <select name="group">
@@ -91,59 +92,65 @@
 
 {% if feeds %}
 <section class="panel" id="groups">
-  <h2>Groups</h2>
-  <p class="muted">Put related calendars together, e.g. &ldquo;Work&rdquo; for your university and lab calendars, then choose one level for the whole group on <a href="/sharing">Who sees what</a>. A calendar can be in one group.</p>
-  {% for gid, grp in cfg.groups.items() %}
-  <form method="post" action="/groups/{{ gid }}" class="form group-edit">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <input type="hidden" name="rev" value="{{ rev }}">
-    <div class="grid2">
-      <label>Name
-        <input type="text" name="name" value="{{ grp.name }}" maxlength="60" required>
-      </label>
-      <label><span>Label <span class="muted">(optional)</span></span>
-        <input type="text" name="label" value="{{ grp.label or '' }}" placeholder="e.g. Work" maxlength="40">
-        <span class="hint">For audiences that see group names at the &ldquo;label&rdquo; level.</span>
-      </label>
-      <label><span>Colour <span class="muted">(optional)</span></span>
-        <span class="inline"><input type="checkbox" name="use_color" {% if grp.color %}checked{% endif %} aria-label="Use a group colour"> <input type="color" name="color" value="{{ grp.color or '#3b6fd8' }}"></span>
-        <span class="hint">Unticked: the first calendar's colour.</span>
-      </label>
-      <label>Shape
-        <select name="marker">
-          <option value="">Same as the first calendar</option>
-          {% for key, glyph in MARKERS.items() %}<option value="{{ key }}" {% if grp.marker == key %}selected{% endif %}>{{ glyph }} {{ key }}</option>{% endfor %}
-        </select>
-      </label>
+  <div class="panelhead"><h2>Groups</h2><span class="muted small board-status" role="status"></span></div>
+  <p class="muted">Drag calendars into a group (or use the menu on each one). Each group gets one level per audience on <a href="/sharing">Who sees what</a>.</p>
+  <div class="board" data-csrf="{{ csrf }}">
+    {% set lanes = [('', 'No group', None)] %}
+    {% for gid, grp in cfg.groups.items() %}{% set lanes = lanes.append((gid, grp.name, grp)) or lanes %}{% endfor %}
+    {% for gid, title, grp in lanes %}
+    <div class="lane{% if not gid %} loose{% endif %}" data-gid="{{ gid }}">
+      <div class="lane-head">
+        <h3>{{ title }}</h3>
+        {% if grp %}
+        <details class="lane-settings">
+          <summary aria-label="Group settings">Edit</summary>
+          <form method="post" action="/groups/{{ gid }}" class="form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="rev" value="{{ rev }}">
+            <label>Name <input type="text" name="name" value="{{ grp.name }}" maxlength="60" required></label>
+            <label><span>Label <span class="muted">(optional)</span></span>
+              <input type="text" name="label" value="{{ grp.label or '' }}" placeholder="e.g. Work" maxlength="40">
+            </label>
+            <label><span>Colour <span class="muted">(optional)</span></span>
+              <span class="inline"><input type="checkbox" name="use_color" {% if grp.color %}checked{% endif %} aria-label="Use a group colour"> <input type="color" name="color" value="{{ grp.color or '#3b6fd8' }}"></span>
+            </label>
+            {% set marker_value = grp.marker %}{% set marker_empty = "Same as the first calendar" %}{% include "admin/_marker.html" %}
+            <p class="hint">Name, label, colour and shape are used for audiences set to see group names.</p>
+            <div class="actions">
+              <button type="submit" class="small">Save</button>
+              <button type="submit" formaction="/groups/{{ gid }}/delete" class="link danger" data-confirm="Remove the group {{ grp.name }}? Its calendars stay.">Remove group</button>
+            </div>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+      <div class="lane-cards">
+        {% for f in feeds if (f.group or '') == gid %}
+        <div class="cal-card" draggable="true" data-cid="{{ f.id }}" style="--ev: {{ f.color }}">
+          <span class="grip" aria-hidden="true">&#8942;&#8942;</span>
+          <span class="dot"></span>{% if f.cal.marker %}<span class="mk-admin">{{ marker_glyph(f.cal.marker) }}</span>{% endif %}
+          <span class="nm">{{ f.cal.name }}</span>
+          <form method="post" action="/calendars/{{ f.id }}/group" class="move-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <select name="group" class="move" aria-label="Move {{ f.cal.name }} to a group">
+              <option value="" {% if not f.group %}selected{% endif %}>No group</option>
+              {% for g2, gg in cfg.groups.items() %}<option value="{{ g2 }}" {% if f.group == g2 %}selected{% endif %}>{{ gg.name }}</option>{% endfor %}
+            </select>
+            <noscript><button type="submit" class="small secondary">Move</button></noscript>
+          </form>
+        </div>
+        {% endfor %}
+        <p class="lane-empty">{{ 'Drop calendars here' if gid else 'Every calendar is in a group' }}</p>
+      </div>
     </div>
-    <fieldset class="checks">
-      <legend>Calendars</legend>
-      {% for f in feeds %}
-      {% set elsewhere = f.group and f.group != gid %}
-      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}" {% if f.group == gid %}checked{% endif %}>
-        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if elsewhere %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
-      {% endfor %}
-    </fieldset>
-    <div class="actions">
-      <button type="submit" class="secondary">Save group</button>
-      <button type="submit" formaction="/groups/{{ gid }}/delete" class="link danger" data-confirm="Remove the group {{ grp.name }}? Its calendars stay.">Remove group</button>
-    </div>
-  </form>
-  {% endfor %}
-  <form method="post" action="/groups/add" class="form group-edit new">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>New group
-      <input type="text" name="name" placeholder="Work" maxlength="60" required>
-    </label>
-    <fieldset class="checks">
-      <legend>Calendars</legend>
-      {% for f in feeds %}
-      <label class="check"><input type="checkbox" name="calendar" value="{{ f.id }}">
-        <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}{% if f.group %} <span class="muted small">(moves from {{ cfg.groups[f.group].name }})</span>{% endif %}</label>
-      {% endfor %}
-    </fieldset>
-    <div class="actions"><button type="submit">Create group</button></div>
-  </form>
+    {% endfor %}
+    <form method="post" action="/groups/add" class="lane new">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <h3>New group</h3>
+      <input type="text" name="name" placeholder="e.g. Work" maxlength="60" required aria-label="New group name">
+      <button type="submit" class="small">Create group</button>
+    </form>
+  </div>
 </section>
 {% endif %}
 {% endblock %}

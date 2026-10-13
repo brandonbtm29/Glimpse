@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from ..config import AppConfig, AudienceCfg, Level
 from ..policy import VisibleEvent
 
-PALETTE_SIZE = 8
+PALETTE_SIZE = 12
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -97,6 +97,7 @@ class WeekView:
     legend: list[LegendItem]
     has_busy: bool
     tz: ZoneInfo | None = None  # zone the times are shown in
+    n_days: int = 7
     owner_tz: ZoneInfo | None = None  # the calendar owner's zone, when different
 
     def owner_time(self, dt: datetime) -> str:
@@ -108,7 +109,9 @@ class WeekView:
 
     @property
     def range_label(self) -> str:
-        return fmt_range(self.start, self.start + timedelta(days=6))
+        if self.n_days == 1:
+            return f"{fmt_day(self.start)}, {self.start.year}"
+        return fmt_range(self.start, self.start + timedelta(days=self.n_days - 1))
 
     @property
     def hours(self) -> list[str]:
@@ -215,12 +218,14 @@ def build_week(
     events: list[VisibleEvent],
     today: date,
     tz: ZoneInfo | None = None,
+    n_days: int = 7,
 ) -> WeekView:
+    """Lay out ``n_days`` days from ``start`` (7 for the week view, 1 for the day view)."""
     tz = tz or cfg.tz
     shifted = tz.key != cfg.timezone
-    dates = [start + timedelta(days=i) for i in range(7)]
+    dates = [start + timedelta(days=i) for i in range(n_days)]
     days = [DayView(day=d, is_today=d == today) for d in dates]
-    if audience.hours and not shifted:
+    if audience.hours and not shifted and n_days > 1:
         # Hour limits are on the owner's clock; in another zone they can land on any weekday.
         allowed = audience.hours.weekday_numbers
         days = [d for d in days if d.day.weekday() in allowed]
@@ -272,4 +277,5 @@ def build_week(
         has_busy=has_busy,
         tz=tz,
         owner_tz=cfg.tz if shifted else None,
+        n_days=n_days,
     )

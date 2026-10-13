@@ -22,7 +22,7 @@ from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 _ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
-CONFIG_VERSION = 1  # settings format; bump with a step in migrations.py when config.yaml's shape changes
+CONFIG_VERSION = 2  # settings format; bump with a step in migrations.py when config.yaml's shape changes
 DEFAULT_UPDATE_REPO = "brandonbtm29/Glimpse"
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -68,7 +68,45 @@ MARKERS: dict[str, str] = {
     "cross": "\u271a",
     "heart": "\u2665",
 }
-Marker = Literal["circle", "square", "triangle", "diamond", "star", "ring", "cross", "heart"]
+# Suggested emoji markers; any single emoji (or other symbol) also works.
+EMOJI_MARKERS = [
+    "\U0001f393",
+    "\U0001f4da",
+    "\U0001f52c",
+    "\U0001f9ea",
+    "\U0001f4bc",
+    "\U0001f4bb",
+    "\U0001f3e0",
+    "\u2764\ufe0f",
+    "\U0001f3cb\ufe0f",
+    "\u26bd",
+    "\U0001f3b5",
+    "\U0001f37d\ufe0f",
+    "\u2708\ufe0f",
+    "\U0001fa7a",
+    "\U0001f331",
+    "\U0001f389",
+    "\u2b50",
+    "\U0001f4c5",
+    "\U0001f91d",
+    "\U0001f6b2",
+]
+
+
+def _check_marker(v: str | None) -> str | None:
+    """A named shape (circle, star...) or a short emoji/symbol."""
+    if v is None or not v.strip():
+        return None
+    v = v.strip()
+    if v in MARKERS:
+        return v
+    if len(v) > 8 or any(c.isascii() for c in v):
+        raise ValueError("marker must be one of " + ", ".join(MARKERS) + ", or a single emoji")
+    return v
+
+
+def marker_glyph(marker: str | None) -> str:
+    return MARKERS.get(marker or "", marker or "")
 
 
 def _check_color(v: str | None) -> str | None:
@@ -84,12 +122,17 @@ class CalendarCfg(_Strict):
     url: str
     label: str | None = None  # shown at the `label` level; defaults to `name`
     color: str | None = None  # CSS colour; a palette colour is used when unset
-    marker: Marker | None = None  # optional shape shown with its events
+    marker: str | None = None  # optional shape or emoji shown with its events
 
     @field_validator("color")
     @classmethod
     def _color(cls, v: str | None) -> str | None:
         return _check_color(v)
+
+    @field_validator("marker")
+    @classmethod
+    def _marker(cls, v: str | None) -> str | None:
+        return _check_marker(v)
 
     @property
     def display_label(self) -> str:
@@ -148,12 +191,17 @@ class GroupCfg(_Strict):
     # Used when an audience is set to see group names instead of calendar names.
     label: str | None = None  # at the `label` level; defaults to the name
     color: str | None = None  # defaults to the first calendar's colour
-    marker: Marker | None = None  # defaults to the first calendar's shape
+    marker: str | None = None  # defaults to the first calendar's shape
 
     @field_validator("color")
     @classmethod
     def _color(cls, v: str | None) -> str | None:
         return _check_color(v)
+
+    @field_validator("marker")
+    @classmethod
+    def _marker(cls, v: str | None) -> str | None:
+        return _check_marker(v)
 
 
 RuleField = Literal["title", "notes", "location"]
@@ -170,6 +218,7 @@ class RuleCfg(_Strict):
     fields: list[RuleField] = Field(default_factory=lambda: ["title", "notes", "location"])
     action: Literal["busy", "hidden"] = "busy"
     calendars: list[str] = Field(default_factory=list)  # empty = every calendar
+    except_audiences: list[str] = Field(default_factory=list)  # audiences this rule leaves alone
     enabled: bool = True
 
     @field_validator("match")
@@ -199,8 +248,8 @@ class RuleCfg(_Strict):
 MAX_WEEKS = 104  # the most a number can say; None ("all") goes further
 ALL_WEEKS = 520  # what "all" means in practice: ten years either way
 
-ViewName = Literal["week", "month", "quarter", "year"]
-VIEW_ORDER: list[str] = ["week", "month", "quarter", "year"]
+ViewName = Literal["day", "week", "month", "quarter", "year"]
+VIEW_ORDER: list[str] = ["day", "week", "month", "quarter", "year"]
 
 
 def _check_slug(v: str) -> str:
@@ -273,7 +322,7 @@ class AudienceCfg(_Strict):
     def _views(cls, v: list[str]) -> list[str]:
         seen = [x for x in VIEW_ORDER if x in v]
         if not seen:
-            raise ValueError("an audience needs at least one view (week, month, quarter or year)")
+            raise ValueError("an audience needs at least one view (day, week, month, quarter or year)")
         return seen
 
     @model_validator(mode="after")
@@ -369,7 +418,7 @@ class CalDisplay:
 
     @property
     def glyph(self) -> str:
-        return MARKERS.get(self.marker or "", "")
+        return marker_glyph(self.marker)
 
 
 class AppConfig(_Strict):
@@ -412,6 +461,9 @@ class AppConfig(_Strict):
             for cid in rule.calendars:
                 if cid not in self.calendars:
                     raise ValueError(f"rule {i} refers to calendar {cid!r}, which is not defined")
+            for aid in rule.except_audiences:
+                if aid not in self.audiences:
+                    raise ValueError(f"rule {i} refers to audience {aid!r}, which is not defined")
         slugs: dict[str, str] = {}
         for aid, aud in self.audiences.items():
             for cid in aud.calendars:
@@ -451,6 +503,10 @@ class AppConfig(_Strict):
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
+
+    def audience_id(self, audience: AudienceCfg) -> str | None:
+        """The id of an audience object from this config (None for e.g. the preview's "Everything")."""
+        return next((aid for aid, a in self.audiences.items() if a is audience), None)
 
     def group_of(self, calendar_id: str) -> str | None:
         for gid, grp in self.groups.items():

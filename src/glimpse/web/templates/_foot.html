@@ -18,9 +18,10 @@
   </div>
   <div class="links">
     {% if freshness %}<span>{{ freshness }}</span>{% endif %}
-    {% if excel_url %}<a href="{{ excel_url }}">Download as Excel</a>{% endif %}
+    {% if excel_url %}<a class="dl" href="{{ excel_url }}" download>{{ excel_label or 'Download as Excel' }}</a>{% endif %}
     {% if ics_url %}<a href="{{ ics_url }}" title="Copy this link and add it in your calendar app as a subscription">Subscribe in your calendar app</a>{% endif %}
     {% if has_password %}<a href="{{ base }}/logout">Sign out</a>{% endif %}
   </div>
 </footer>
+<p class="get-own">Want to share your own schedule like this? Glimpse is free and open source, and runs on your own computer. <a href="{{ repo_url }}" target="_blank" rel="noopener">Get started with Glimpse</a></p>
 <script src="/static/viewer.js?v={{ version }}" defer></script>

@@ -69,7 +69,7 @@ def test_migrate_steps_and_newer_config(monkeypatch):
 
 
 def test_config_from_newer_glimpse_is_refused(config_path):
-    text = config_path.read_text()
+    text = config_path.read_text().replace("config_version: 2\n", "")
     config_path.write_text(f"config_version: {CONFIG_VERSION + 1}\n" + text)
     with pytest.raises(ConfigError, match="settings format"):
         load_config(config_path)
@@ -81,16 +81,33 @@ def test_upgrade_file_is_noop_when_current(config_path):
     assert config_path.read_text() == before
 
 
-def test_upgrade_file_rewrites_and_backs_up(config_path, monkeypatch):
-    import glimpse.store as store_mod
-
-    monkeypatch.setattr(store_mod, "CONFIG_VERSION", 2)
-    monkeypatch.setitem(migrations.STEPS, 1, lambda raw: raw)
-    monkeypatch.setattr("glimpse.config.CONFIG_VERSION", 2)
+def test_upgrade_from_v1_adds_suggested_rules_and_backs_up(config_path):
+    config_path.write_text(config_path.read_text().replace("config_version: 2\n", ""))
     store = ConfigStore(config_path)
     assert store.upgrade_file() == 1
-    assert "config_version: 2" in config_path.read_text()
+    text = config_path.read_text()
+    assert "config_version: 2" in text and "name: Health" in text
     assert (config_path.parent / "config.yaml.v1.bak").is_file()
+    cfg = store.current()
+    assert [r.name for r in cfg.rules] == ["Health", "Job search", "Money and legal"]
+    assert all(r.enabled for r in cfg.rules)
+    assert store.upgrade_file() is None  # only once
+
+
+def test_upgrade_keeps_existing_rules(config_path):
+    text = config_path.read_text().replace("config_version: 2\n", "")
+    config_path.write_text(text + "rules:\n  - name: Mine\n    match: [secret]\n")
+    store = ConfigStore(config_path)
+    store.upgrade_file()
+    assert [r.name for r in store.current().rules] == ["Mine"]
+
+
+def test_new_installs_start_with_suggested_rules(tmp_path):
+    from glimpse.store import init_files
+
+    init_files(tmp_path / "config.yaml")
+    cfg = load_config(tmp_path / "config.yaml")
+    assert cfg.config_version == CONFIG_VERSION and len(cfg.rules) == 3
 
 
 # --- release check ------------------------------------------------------------------------

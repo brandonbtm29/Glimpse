@@ -109,6 +109,63 @@
     }, true);
   }
 
+  // Calendars page: drag calendars between group lanes (or use each card's menu).
+  var board = document.querySelector(".board[data-csrf]");
+  if (board && window.fetch) {
+    var bcsrf = board.getAttribute("data-csrf");
+    var status = document.querySelector(".board-status");
+    var dragged = null;
+    var say = function (msg) { if (status) status.textContent = msg; };
+    var move = function (card, gid) {
+      var lane = board.querySelector('.lane[data-gid="' + gid + '"] .lane-cards');
+      if (!lane || card.closest(".lane").getAttribute("data-gid") === gid) return;
+      var body = new FormData();
+      body.append("cid", card.getAttribute("data-cid"));
+      body.append("gid", gid);
+      say("Saving\u2026");
+      fetch("/api/calendar-group", { method: "POST", headers: { "X-CSRF": bcsrf }, body: body, credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.ok) { say(d.error || "Couldn't move it."); return; }
+          lane.insertBefore(card, lane.querySelector(".lane-empty"));
+          var sel = card.querySelector("select.move");
+          if (sel) sel.value = gid;
+          say("Saved.");
+        })
+        .catch(function () { say("Couldn't reach Glimpse."); });
+    };
+    board.addEventListener("dragstart", function (e) {
+      dragged = e.target.closest(".cal-card");
+      if (!dragged) return;
+      dragged.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", dragged.getAttribute("data-cid"));
+    });
+    board.addEventListener("dragend", function () {
+      if (dragged) dragged.classList.remove("dragging");
+      board.querySelectorAll(".lane.over").forEach(function (l) { l.classList.remove("over"); });
+      dragged = null;
+    });
+    board.addEventListener("dragover", function (e) {
+      var lane = e.target.closest(".lane[data-gid]");
+      if (!lane || !dragged) return;
+      e.preventDefault();
+      board.querySelectorAll(".lane.over").forEach(function (l) { if (l !== lane) l.classList.remove("over"); });
+      lane.classList.add("over");
+    });
+    board.addEventListener("drop", function (e) {
+      var lane = e.target.closest(".lane[data-gid]");
+      if (!lane || !dragged) return;
+      e.preventDefault();
+      lane.classList.remove("over");
+      move(dragged, lane.getAttribute("data-gid"));
+    });
+    board.addEventListener("change", function (e) {
+      if (!e.target.matches("select.move")) return;
+      move(e.target.closest(".cal-card"), e.target.value);
+    });
+  }
+
   // Select a link's text when its box is clicked, for easy manual copying.
   document.addEventListener("focusin", function (e) {
     if (e.target.matches(".copyrow input[readonly]")) e.target.select();

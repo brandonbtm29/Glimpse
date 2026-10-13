@@ -4,6 +4,7 @@
 {% block body %}
 <main class="page">
   {% include "_top.html" %}
+  {% if day_note %}<p class="day-note">{{ day_note }}</p>{% endif %}
   {% include "_week.html" %}
   {% include "_foot.html" %}
 </main>

@@ -28,17 +28,17 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **Settings panel in your browser**: add calendar links, decide who sees what, and preview every audience's exact view. Works from any device on your Tailscale network (Mac, Windows, phone); never exposed publicly.
 - **Any number of calendars** from Google, Outlook / Microsoft 365, iCloud, or anything else that publishes an ICS feed.
 - **Five detail levels**, set per audience *and* per calendar: `full`, `title`, `label`, `busy`, `hidden`.
-- **Shapes as well as colours**: give a calendar a small shape (triangle, star…) so its events stand out without relying on colour.
-- **Calendar groups**: put related calendars together (e.g. "Work" = university + lab) and set one level per group, with per-calendar exceptions. Some audiences can see just the group's name ("Work") instead of each calendar.
+- **Distinct colours and shapes**: every calendar gets its own colour out of 12, and can have a small shape or emoji (triangle, star, 🎓…) so its events stand out without relying on colour.
+- **Calendar groups**: drag related calendars into a group (e.g. "Work" = university + lab) and set one level per group, with per-calendar exceptions. Some audiences can see just the group's name ("Work") instead of each calendar.
 - **Time windows**: show an audience only certain days and hours (e.g. Mon–Fri 8:00–18:00).
 - **Per-event overrides**: put `#private` in an event to make it "Busy" for everyone, or `#hide` to hide it. Events marked Private in Outlook/Google are treated as `#private` automatically.
-- **Keyword privacy rules**: "anything mentioning *doctor* or *therapy* is Busy for everyone", or "hide anything with *interview*". Whole-word, case- and accent-insensitive, optionally limited to some calendars, with a preview of which upcoming events a rule catches.
+- **Keyword privacy rules, on from the start**: suggested rules already turn health, job-search, and money/legal events (*doctor*, *therapy*, *interview*, *lawyer*…) into a plain Busy block for everyone. Add your own ("hide anything with *surprise*"), exempt an audience such as your partner, and preview which upcoming events a rule catches. Whole-word, case- and accent-insensitive.
 - **Duplicate merging**: a meeting that's on two of your calendars (say, invited on work and copied to personal) shows once. If any copy is private or caught by a rule, that wins.
 - **Optional passwords** per audience (Argon2-hashed, rate-limited, 30-day sign-in), and one-click "new link" to cut off access.
 - **People with their own links**: put someone in an audience with a personal link. Move them between audiences, give the link an end date, see when they last looked, or cut off just them. Switch an audience's shared link off once everyone has their own.
-- **Week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
+- **Day, week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
 - **Time zones**: viewers see your schedule in their own time (detected, or picked from a list), with your time a click away. Hour limits always stay on your clock.
-- **Excel download** of any visible week or month, and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
+- **Excel download** of any visible week or month (works on phones too), and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
 - Recurring events, moved/cancelled instances, all-day and overnight events, and daylight-saving changes all handled.
 - **One double-click install** on Windows and macOS, then a guided setup in the browser. No administrator rights needed.
 - Runs on Windows, macOS or Linux. One Python process, no database, no tracking.

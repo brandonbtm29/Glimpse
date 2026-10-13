@@ -14,8 +14,63 @@ from typing import Any
 
 Raw = dict[str, Any]
 
+# Privacy rules every new (or upgraded, rule-less) setup starts with. Matching events show as
+# Busy for every audience; each rule can be switched off or edited on the Privacy rules page.
+SUGGESTED_RULES: list[Raw] = [
+    {
+        "name": "Health",
+        "match": [
+            "doctor",
+            "dentist",
+            "therapy",
+            "therapist",
+            "counseling",
+            "counselling",
+            "psychiatrist",
+            "clinic",
+            "hospital",
+            "pharmacy",
+            "prescription",
+            "physical therapy",
+            "checkup",
+            "vaccine",
+        ],
+    },
+    {
+        "name": "Job search",
+        "match": ["interview", "recruiter", "job offer", "salary"],
+    },
+    {
+        "name": "Money and legal",
+        "match": [
+            "bank",
+            "loan",
+            "mortgage",
+            "lawyer",
+            "attorney",
+            "court",
+            "tax",
+            "taxes",
+            "accountant",
+            "financial advisor",
+        ],
+    },
+]
+
+
+def suggested_rules() -> list[Raw]:
+    return copy.deepcopy(SUGGESTED_RULES)
+
+
+def _v1_to_v2(raw: Raw) -> Raw:
+    """0.4.1: privacy rules are on by default. Setups with no rules get the suggested set."""
+    if "rules" not in raw:
+        raw["rules"] = suggested_rules()
+    return raw
+
+
 # from_version -> function returning the raw config in from_version + 1 format
-STEPS: dict[int, Callable[[Raw], Raw]] = {}
+STEPS: dict[int, Callable[[Raw], Raw]] = {1: _v1_to_v2}
 
 
 def config_version_of(raw: Raw) -> int:

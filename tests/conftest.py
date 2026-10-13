@@ -16,6 +16,7 @@ PARTNER_SLUG = "partnerSlug_abcdefghij"
 COWORKER_SLUG = "coworkerSlug_klmnopqrs"
 
 CONFIG = """
+config_version: 2
 timezone: America/New_York
 refresh_minutes: 10
 week_starts: monday

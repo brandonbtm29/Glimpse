@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import re
 import secrets
@@ -33,6 +34,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .. import __version__, autostart, tailscale, updates
 from ..config import (
+    EMOJI_MARKERS,
     MARKERS,
     MAX_WEEKS,
     VIEW_ORDER,
@@ -42,6 +44,8 @@ from ..config import (
     ConfigError,
     Level,
     RuleCfg,
+    _check_marker,
+    marker_glyph,
 )
 from ..core import add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..events import parse_events
@@ -62,7 +66,21 @@ COOKIE = "glimpse_admin"
 SESSION_DAYS = 7
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
-PALETTE_HEX = ["#3b6fd8", "#2f9e63", "#e07b26", "#8a5cd6", "#d6456a", "#1f9aa3", "#b8901a", "#6b7584"]
+# Matches the CSS palette c0..c11: twelve hues far enough apart to tell side by side.
+PALETTE_HEX = [
+    "#3b6fd8",
+    "#2f9e63",
+    "#e07b26",
+    "#8a5cd6",
+    "#d6456a",
+    "#1f9aa3",
+    "#b8901a",
+    "#6b7584",
+    "#65a30d",
+    "#0ea5e9",
+    "#92400e",
+    "#c026d3",
+]
 LEVELS = [lv.value for lv in Level]
 LEVEL_HELP = {
     "full": "Title, time, location and notes",
@@ -101,8 +119,11 @@ FLASH = {
     "person_rotated": "New link created for them. Their old link has stopped working.",
     "person_moved": "Moved. Their link now shows the new audience's view.",
     "checked": "Checked GitHub for updates.",
+    "recolored": "Every calendar now has its own colour.",
+    "rules_suggested": "Suggested rules added. Turn off or edit any that don't fit.",
 }
 VIEW_HELP = {
+    "day": "Day: one day, hour by hour (handy on phones)",
     "week": "Week: the hour-by-hour grid",
     "month": "Month: a calendar with each day's items",
     "quarter": "3 months: how busy each day is, no titles",
@@ -124,6 +145,15 @@ ADMIN_HEADERS = {
 }
 
 _hasher = PasswordHasher()
+
+
+def form_marker(form) -> str | None:
+    """The chosen shape/emoji (typed emoji wins). Raises ValueError for anything else."""
+    raw = str(form.get("marker_custom", "")).strip() or str(form.get("marker", "")).strip()
+    return _check_marker(raw)
+
+
+RELOGIN = '{"ok": false, "error": "Please sign in again."}'
 
 
 class SaveConflict(Exception):
@@ -224,6 +254,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         WEEKDAYS=WEEKDAYS,
         DAY_LABELS=DAY_LABELS,
         MARKERS=MARKERS,
+        EMOJI_MARKERS=EMOJI_MARKERS,
+        marker_glyph=marker_glyph,
         MAX_WEEKS=MAX_WEEKS,
         mask_url=mask_url,
         provider_of=provider_of,
@@ -759,8 +791,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
     # -- calendars -------------------------------------------------------------------------
 
     def calendars_page(request, sess, form_values=None, test=None, error=None, status=200):
-        n = len(cfg().calendars)
-        values = form_values or {"name": "", "url": "", "label": "", "color": PALETTE_HEX[n % PALETTE_SIZE]}
+        values = form_values or {"name": "", "url": "", "label": "", "color": next_color(), "marker": ""}
         return page(
             request,
             "admin/calendars.html",
@@ -777,7 +808,13 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return calendars_page(request, sess)
 
     def _cal_values(form) -> dict[str, str]:
-        return {k: str(form.get(k, "")).strip() for k in ("name", "url", "label", "color", "group", "marker")}
+        v = {k: str(form.get(k, "")).strip() for k in ("name", "url", "label", "color", "group")}
+        try:
+            v["marker"] = form_marker(form) or ""
+        except ValueError:
+            v["marker"] = ""
+            v["marker_error"] = "That shape isn't available: pick one from the list or type a single emoji."
+        return v
 
     @app.post("/calendars/test", response_class=HTMLResponse)
     async def calendars_test(request: Request):
@@ -800,13 +837,15 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             return calendars_page(
                 request, sess, v, error="A name and a feed link are both needed.", status=400
             )
+        if v.get("marker_error"):
+            return calendars_page(request, sess, v, error=v["marker_error"], status=400)
         try:
 
             def mutate(d: Draft) -> None:
                 cid = d.add_calendar(v["name"], v["url"], v["label"] or None, v["color"] or None)
                 if v["group"] in d.groups:
                     d.set_calendar_group(cid, v["group"])
-                if v["marker"] in MARKERS:
+                if v["marker"]:
                     d.calendars[cid]["marker"] = v["marker"]
 
             await save(mutate)
@@ -838,6 +877,15 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         if cid not in cfg().calendars:
             return RedirectResponse("/calendars", status_code=303)
         v = _cal_values(form)
+        if v.get("marker_error"):
+            row = next(r for r in feed_rows() if r["id"] == cid)
+            return page(
+                request,
+                "admin/calendar_edit.html",
+                {"row": row, "used_by": [], "error": v["marker_error"]},
+                sess,
+                400,
+            )
 
         def mutate(d: Draft) -> None:
             node = d.calendars[cid]
@@ -851,7 +899,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node["color"] = v["color"]
             if v["url"]:
                 d.set_secret(node, "url", v["url"], _env_name("CAL", cid, "URL"))
-            if v["marker"] in MARKERS:
+            if v["marker"]:
                 node["marker"] = v["marker"]
             else:
                 node.pop("marker", None)
@@ -873,6 +921,65 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             return to_login()
         await save(lambda d: d.remove_calendar(cid))
         return done("/calendars", "cal_deleted")
+
+    def used_colors() -> set[str]:
+        c = cfg()
+        return {
+            (cal.color or PALETTE_HEX[i % PALETTE_SIZE]).lower() for i, cal in enumerate(c.calendars.values())
+        }
+
+    def next_color() -> str:
+        """The first palette colour no calendar uses yet (cycling once all are taken)."""
+        used = used_colors()
+        free = [h for h in PALETTE_HEX if h.lower() not in used]
+        return free[0] if free else PALETTE_HEX[len(cfg().calendars) % PALETTE_SIZE]
+
+    @app.post("/recolor-calendars")
+    async def calendars_recolor(request: Request):
+        """Give every calendar its own palette colour, in list order."""
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+
+        def mutate(d: Draft) -> None:
+            for i, node in enumerate(d.calendars.values()):
+                node["color"] = PALETTE_HEX[i % PALETTE_SIZE]
+
+        await save(mutate)
+        return done("/calendars", "recolored")
+
+    async def move_calendar(cid: str, gid: str) -> None:
+        if cid not in cfg().calendars or (gid and gid not in cfg().groups):
+            raise KeyError(cid)
+        await save(lambda d: d.set_calendar_group(cid, gid or None))
+
+    @app.post("/api/calendar-group")
+    async def api_calendar_group(request: Request):
+        """Move a calendar into a group (drag and drop on the Calendars page)."""
+        sess = session(request)
+        if not sess or not hmac.compare_digest(request.headers.get("X-CSRF", ""), sess.get("c", "")):
+            return Response(
+                '{"ok": false, "error": "Please sign in again."}', 403, media_type="application/json"
+            )
+        form = await request.form()
+        try:
+            await move_calendar(str(form.get("cid", "")), str(form.get("gid", "")))
+        except (KeyError, ConfigError) as exc:
+            msg = "That calendar or group no longer exists." if isinstance(exc, KeyError) else str(exc)
+            return Response(json.dumps({"ok": False, "error": msg}), 400, media_type="application/json")
+        return Response('{"ok": true}', media_type="application/json")
+
+    @app.post("/calendars/{cid}/group")
+    async def calendar_group_form(request: Request, cid: str):
+        """The same move without JavaScript (the menu on each calendar card)."""
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        try:
+            await move_calendar(cid, str(form.get("group", "")))
+        except (KeyError, ConfigError):
+            pass
+        return done("/calendars#groups", "saved")
 
     # -- groups ----------------------------------------------------------------------------
 
@@ -906,8 +1013,15 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             return RedirectResponse("/calendars", status_code=303)
         name = str(form.get("name", "")).strip()[:60]
         members = {cid for cid in form.getlist("calendar") if cid in cfg().calendars}
+        change_members = "calendar" in form  # the drag-and-drop board moves calendars separately
 
-        extras = {k: str(form.get(k, "")).strip() for k in ("label", "color", "marker")}
+        extras = {k: str(form.get(k, "")).strip() for k in ("label", "color")}
+        try:
+            marker = form_marker(form)
+        except ValueError:
+            return calendars_page(
+                request, sess, error="Pick a shape from the list or type a single emoji.", status=400
+            )
         use_color = form.get("use_color") == "on"
 
         def mutate(d: Draft) -> None:
@@ -922,11 +1036,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node["color"] = extras["color"]
             else:
                 node.pop("color", None)
-            if extras["marker"] in MARKERS:
-                node["marker"] = extras["marker"]
+            if marker:
+                node["marker"] = marker
             else:
                 node.pop("marker", None)
-            for cid in d.calendars:
+            for cid in d.calendars if change_members else []:
                 if cid in members:
                     d.set_calendar_group(cid, gid)
                 elif d.group_of(cid) == gid:
@@ -1184,6 +1298,12 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 )
         return out
 
+    def missing_suggested() -> list[str]:
+        from ..migrations import SUGGESTED_RULES
+
+        have = {r.name for r in cfg().rules}
+        return [r["name"] for r in SUGGESTED_RULES if r["name"] not in have]
+
     def rules_page(request, sess, form_values=None, test=None, error=None, status=200):
         c = cfg()
         rules = [{"i": i, "rule": r, "matches": rule_matches_upcoming(r)} for i, r in enumerate(c.rules)]
@@ -1193,6 +1313,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "fields": list(RULE_FIELDS),
             "action": "busy",
             "calendars": [],
+            "except_audiences": [],
             "enabled": True,
         }
         return page(
@@ -1200,6 +1321,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "admin/rules.html",
             {
                 "rules": rules,
+                "missing_suggested": missing_suggested(),
                 "form": values,
                 "test": test,
                 "fields": RULE_FIELDS,
@@ -1219,6 +1341,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "fields": [f for f in form.getlist("field") if f in RULE_FIELDS],
             "action": "hidden" if form.get("action") == "hidden" else "busy",
             "calendars": [cid for cid in form.getlist("calendar") if cid in cfg().calendars],
+            "except_audiences": [a for a in form.getlist("except") if a in cfg().audiences],
             "enabled": not form.getlist("enabled") or "on" in form.getlist("enabled"),
         }
 
@@ -1232,6 +1355,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             raw["fields"] = []  # rejected by validation with a clear message
         if v["calendars"]:
             raw["calendars"] = v["calendars"]
+        if v.get("except_audiences"):
+            raw["except_audiences"] = v["except_audiences"]
         if not v["enabled"]:
             raw["enabled"] = False
         return raw
@@ -1249,6 +1374,24 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         if not sess:
             return to_login()
         return rules_page(request, sess)
+
+    @app.post("/rules/suggested")
+    async def rules_suggested(request: Request):
+        """Add whichever suggested rules (Health, Job search, Money and legal) are missing."""
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        from ..migrations import suggested_rules
+
+        have = {r.name for r in cfg().rules}
+
+        def mutate(d: Draft) -> None:
+            for rule in suggested_rules():
+                if rule["name"] not in have:
+                    d.set_rule(None, rule)
+
+        await save(mutate)
+        return done("/rules", "rules_suggested")
 
     @app.post("/rules/test", response_class=HTMLResponse)
     async def rules_test(request: Request):

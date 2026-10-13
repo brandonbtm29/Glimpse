@@ -38,6 +38,7 @@
 /* Calendar palette (custom colours from config override --ev inline). */
 .c0 { --ev: #3b6fd8; } .c1 { --ev: #2f9e63; } .c2 { --ev: #e07b26; } .c3 { --ev: #8a5cd6; }
 .c4 { --ev: #d6456a; } .c5 { --ev: #1f9aa3; } .c6 { --ev: #b8901a; } .c7 { --ev: #6b7584; }
+.c8 { --ev: #65a30d; } .c9 { --ev: #0ea5e9; } .c10 { --ev: #92400e; } .c11 { --ev: #c026d3; }
 .busy { --ev: var(--busy); }
 
 * { box-sizing: border-box; }
@@ -272,3 +273,21 @@ a.hd:hover { border-color: var(--accent); }
 .welcome .hello { font-weight: 700; font-size: 16px; }
 .welcome .whose { color: var(--muted); font-size: 13.5px; }
 .welcome .brand { font-weight: 600; color: var(--ink); }
+
+/* About + get your own */
+.about { margin: -8px 0 16px; font-size: 13.5px; }
+.about summary { cursor: pointer; color: var(--accent); display: inline-block; }
+.about-body { margin-top: 8px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+.about-body p { margin: 0 0 8px; }
+.about-body p:last-child { margin: 0; }
+.get-own { margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--faint); }
+.day-note { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+.foot .dl { font-weight: 600; }
+
+/* Printing (or "Save as PDF" from a phone's share menu) */
+@media print {
+  body { background: #fff; }
+  .controls, .foot .zone, .foot .links a, .about, .get-own, script { display: none !important; }
+  .welcome { border: 0; background: none; padding: 0; }
+  .grid, .month { box-shadow: none; }
+}

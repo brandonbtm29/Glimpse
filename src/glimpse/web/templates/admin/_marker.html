@@ -1,0 +1,17 @@
+{# Shape-or-emoji picker. Set marker_value (current) and optionally marker_empty before including. #}
+<label>Shape or emoji
+  <select name="marker">
+    <option value="">{{ marker_empty or 'None (colour only)' }}</option>
+    <optgroup label="Shapes">
+      {% for key, glyph in MARKERS.items() %}<option value="{{ key }}" {% if marker_value == key %}selected{% endif %}>{{ glyph }} {{ key }}</option>{% endfor %}
+    </optgroup>
+    <optgroup label="Emoji">
+      {% for e in EMOJI_MARKERS %}<option value="{{ e }}" {% if marker_value == e %}selected{% endif %}>{{ e }}</option>{% endfor %}
+      {% if marker_value and marker_value not in MARKERS and marker_value not in EMOJI_MARKERS %}<option value="{{ marker_value }}" selected>{{ marker_value }}</option>{% endif %}
+    </optgroup>
+  </select>
+</label>
+<label><span>Or type any emoji <span class="muted">(optional)</span></span>
+  <input type="text" name="marker_custom" maxlength="8" placeholder="e.g. &#x1F9EC;" autocomplete="off">
+  <span class="hint">Shown in the corner of its events and in the legend, so calendars differ by more than colour.</span>
+</label>

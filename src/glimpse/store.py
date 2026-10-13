@@ -224,6 +224,11 @@ class Draft:
         for pid, person in list((self.raw.get("people") or {}).items()):
             if isinstance(person, dict) and person.get("audience") == aid:
                 self.remove_person(pid)
+        for rule in self.raw.get("rules") or []:
+            if isinstance(rule, dict) and aid in (rule.get("except_audiences") or []):
+                rule["except_audiences"] = [a for a in rule["except_audiences"] if a != aid]
+                if not rule["except_audiences"]:
+                    rule.pop("except_audiences")
 
     # -- people --------------------------------------------------------------
 
@@ -292,7 +297,15 @@ class ConfigStore:
         return env
 
     def load(self) -> tuple[dict[str, Any], dict[str, str]]:
-        return read_raw_config(self.config_path), read_env_file(self.env_path)
+        """Raw config (in the current settings format) and the .env values."""
+        from .migrations import migrate
+
+        raw = read_raw_config(self.config_path)
+        try:
+            raw, _ = migrate(raw, CONFIG_VERSION)
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
+        return raw, read_env_file(self.env_path)
 
     def current(self) -> AppConfig:
         raw, env = self.load()
@@ -403,6 +416,12 @@ def _restrict(path: Path) -> None:
         os.chmod(path, 0o600)
 
 
+def suggested_rules() -> list[dict[str, Any]]:
+    from .migrations import suggested_rules as _s
+
+    return _s()
+
+
 def init_files(config_path: Path, env_path: Path | None = None, admin_hash: str | None = None) -> None:
     """Create a minimal working config.yaml + .env (refuses to overwrite)."""
     env_path = env_path or default_env_path(config_path)
@@ -422,6 +441,7 @@ def init_files(config_path: Path, env_path: Path | None = None, admin_hash: str 
         "admin": {"port": 8001, "password_hash": "${GLIMPSE_ADMIN_PASSWORD_HASH}"},
         "calendars": {},
         "audiences": {},
+        "rules": suggested_rules(),
     }
     file_env = read_env_file(env_path)
     d = Draft(raw, file_env)

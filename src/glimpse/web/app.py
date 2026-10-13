@@ -27,7 +27,7 @@ from ..config import AppConfig
 from ..core import Glimpse, add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..render.ics import to_ics
 from ..render.periods import build_heat, build_month
-from ..render.week import build_week, fmt_day, fmt_time
+from ..render.week import DAY_NAMES, build_week, fmt_day, fmt_time
 from ..render.xlsx import month_to_xlsx, week_to_xlsx
 from .auth import (
     SESSION_DAYS,
@@ -46,7 +46,7 @@ HERE = Path(__file__).parent
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TZ_COOKIE = "glimpse_tz"
 FEED_WEEKS_AHEAD, FEED_WEEKS_BEHIND = 104, 52
-VIEW_LABELS = {"week": "Week", "month": "Month", "quarter": "3 months", "year": "Year"}
+VIEW_LABELS = {"day": "Day", "week": "Week", "month": "Month", "quarter": "3 months", "year": "Year"}
 COMMON_ZONES = [
     "Pacific/Honolulu",
     "America/Anchorage",
@@ -252,6 +252,9 @@ def create_app(
             "freshness": freshness(),
             "person": v.person.name if v.person else None,
             "owner_possessive": g.cfg.owner_possessive,
+            "owner_first": (g.cfg.owner_name or "").strip() or None,
+            "refresh_minutes": g.cfg.refresh_minutes,
+            "repo_url": f"https://github.com/{g.cfg.updates.repo}",
             **zone_ctx(request, v, tz),
         }
 
@@ -311,6 +314,8 @@ def create_app(
             return to_login(v, f"{view}/{day}")
         zone = display_zone(request, v)
         seen.touch(v.seen_key)
+        if view == "day":
+            return day_view(request, v, d, zone)
         if view == "week":
             return week_view(request, v, d, zone)
         return period_view(request, v, view, d, zone)
@@ -336,7 +341,37 @@ def create_app(
             "now_link": None if start == this else f"{v.base}/week/{this}",
             "now_label": "This week",
             "excel_url": f"{v.base}/excel/{start}" if aud.allow_excel else None,
+            "excel_label": "Download this week (Excel)",
             "hour_px": 44,
+        }
+        return templates.TemplateResponse(request, "week.html", ctx)
+
+    def day_view(request: Request, v: Viewer, d: date, tz: ZoneInfo) -> Response:
+        aud, c = v.audience, g.cfg
+        lo, hi = allowed_days(v)
+        if not lo <= d <= hi:
+            return RedirectResponse(f"{v.base}/day/{lo if d < lo else hi}", status_code=303)
+        today = g.today_in(tz)
+        events = g.view(aud, *day_range(d, d + timedelta(days=1), tz), tz)
+        view = build_week(c, aud, d, events, today, tz, n_days=1)
+        prev_d, next_d = d - timedelta(days=1), d + timedelta(days=1)
+        note = None
+        if aud.hours and tz.key == c.timezone and d.weekday() not in aud.hours.weekday_numbers:
+            days = ", ".join(DAY_NAMES[i] for i in sorted(aud.hours.weekday_numbers))
+            note = f"Only {days} are shared here."
+        ctx = common_ctx(request, v, tz, "day") | {
+            "view": view,
+            "range_label": view.range_label,
+            "prev": f"{v.base}/day/{prev_d}" if prev_d >= lo else None,
+            "next": f"{v.base}/day/{next_d}" if next_d <= hi else None,
+            "now_link": None if d == today else f"{v.base}/day/{today}",
+            "now_label": "Today",
+            "excel_url": f"{v.base}/excel/{week_start(d, c)}"
+            if aud.allow_excel and "week" in aud.views
+            else None,
+            "excel_label": "Download this week (Excel)",
+            "day_note": note,
+            "hour_px": 52,
         }
         return templates.TemplateResponse(request, "week.html", ctx)
 
@@ -373,6 +408,7 @@ def create_app(
                 "view": view,
                 "range_label": view.label,
                 "excel_url": f"{v.base}/excel-month/{first}" if aud.allow_excel else None,
+                "excel_label": "Download this month (Excel)",
             }
             return templates.TemplateResponse(request, "month.html", ctx)
         view = build_heat(c, aud, first, end, kind, events, today, (lo, hi), tz)

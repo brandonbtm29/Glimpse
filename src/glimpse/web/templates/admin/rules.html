@@ -32,6 +32,14 @@
     {% endfor %}
   </fieldset>
   {% endif %}
+  {% if cfg.audiences | length > 0 %}
+  <fieldset class="checks">
+    <legend>Don't apply to <span class="muted small">(e.g. your partner, who may see these)</span></legend>
+    {% for aid, a in cfg.audiences.items() %}
+    <label class="check"><input type="checkbox" name="except" value="{{ aid }}" {% if aid in v.except_audiences %}checked{% endif %}> {{ a.title }}</label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
   <label class="check"><input type="hidden" name="enabled" value="off"><input type="checkbox" name="enabled" value="on" {% if v.enabled %}checked{% endif %}> Rule is on</label>
 {% endmacro %}
 
@@ -54,17 +62,29 @@
   </div>
 </header>
 
+{% if missing_suggested %}
+<section class="panel suggest">
+  <div class="panelhead"><h2>Suggested rules</h2></div>
+  <p class="muted">Ready-made rules that keep common private things (health, job search, money and legal) to a plain Busy block for everyone. Not added yet: {{ missing_suggested | join(', ') }}.</p>
+  <form method="post" action="/rules/suggested" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Add suggested rules</button>
+    <span class="hint">You can turn off or edit each one afterwards.</span>
+  </form>
+</section>
+{% endif %}
+
 {% for item in rules %}
 {% set r = item.rule %}
 <section class="panel rule{% if not r.enabled %} off{% endif %}" id="rule-{{ item.i }}">
   <div class="panelhead">
-    <h2>{{ r.display_name }}</h2>
+    <h2>{{ r.display_name }}{% if r.except_audiences %} <span class="muted small">· not for {% for a in r.except_audiences %}{{ cfg.audiences[a].title }}{{ ', ' if not loop.last }}{% endfor %}</span>{% endif %}</h2>
     <span class="lvl lvl-{{ r.action }}">{{ r.action }}</span>
   </div>
   <form method="post" action="/rules/{{ item.i }}" class="form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="rev" value="{{ rev }}">
-    {{ rule_fields({"name": r.name or "", "match": r.match | join("\n"), "fields": r.fields, "action": r.action, "calendars": r.calendars, "enabled": r.enabled}, item.i) }}
+    {{ rule_fields({"name": r.name or "", "match": r.match | join("\n"), "fields": r.fields, "action": r.action, "calendars": r.calendars, "except_audiences": r.except_audiences, "enabled": r.enabled}, item.i) }}
     <div class="actions">
       <button type="submit" class="secondary">Save rule</button>
       <button type="submit" formaction="/rules/{{ item.i }}/delete" class="link danger" data-confirm="Remove this rule?">Remove</button>

@@ -26,6 +26,7 @@ SECRET = "s" * 40
 
 def make_cfg(**extra):
     raw = {
+        "config_version": 2,
         "timezone": "America/New_York",
         "server": {"secret_key": SECRET},
         "calendars": {

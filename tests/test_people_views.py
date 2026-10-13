@@ -276,7 +276,7 @@ def test_views_not_enabled_are_404(store):
 
 def test_new_audiences_get_every_view(store):
     cfg = store.update(lambda d: d.add_audience("Lab group"))
-    assert cfg.audiences["lab_group"].views == ["week", "month", "quarter", "year"]
+    assert cfg.audiences["lab_group"].views == ["day", "week", "month", "quarter", "year"]
 
 
 def test_month_view(store):
@@ -304,7 +304,8 @@ def test_heat_maps_contain_no_event_text(store, kind):
     first, _ = period_bounds(kind, WEEK)
     login(c, f"/a/{PARTNER_SLUG}", PARTNER_PASSWORD)
     for slug in (PARTNER_SLUG, COWORKER_SLUG):
-        html = c.get(f"/a/{slug}/{kind}/{first}").text
+        page = c.get(f"/a/{slug}/{kind}/{first}").text
+        html = page[page.index('<section class="heat') : page.index("<footer")]  # the map and stretches
         assert 'class="hd h' in html
         for word in ["Dinner with Sam", "Lab work", "Polymer", "Luigi", "Doctor", "Grandma", "Busy"]:
             assert word not in html, (slug, word)

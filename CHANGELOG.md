@@ -8,6 +8,30 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-13
+
+### Added
+- **Day view** for audiences: one day at a time, with previous/next day and Today. Tick "Day" on
+  an audience's page to offer it (new audiences get it by default).
+- **Emoji as calendar shapes**: pick one of 20 emoji, or type your own, as a calendar's or
+  group's marker.
+- **Suggested privacy rules, on by default**: new setups start with rules that turn health,
+  job-search, and money/legal events (doctor, therapy, interview, bank, lawyer…) into a plain
+  Busy block. Existing setups without any rules get them on upgrade (settings format 2, with a
+  `config.yaml.v1.bak` backup); otherwise the Rules page offers "Add suggested rules".
+- **"Don't apply to"** on each rule: exempt chosen audiences (e.g. your partner).
+- **Drag-and-drop groups** on the Calendars page: drag a calendar card into a group lane (or
+  use its Move menu on a phone). Group settings fold away under each lane.
+- **About Glimpse** on shared pages: a fold-out explaining what the viewer is looking at, and a
+  footer link for people who want to share their own schedule the same way.
+
+### Changed
+- **Distinct colours**: 12 colours instead of 8, and each new calendar gets one that isn't in
+  use yet. "Give every calendar its own colour" on the Calendars page fixes existing repeats.
+- Excel links say what they download ("Download this week (Excel)" / "this month"), and the
+  day view offers its whole week. Shared pages print cleanly (Share > Print > Save as PDF on
+  a phone).
+
 ## [0.4.0] - 2026-10-13
 
 ### Added

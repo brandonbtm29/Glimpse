@@ -31,7 +31,8 @@ admin:
 #   label  shown instead of the title at the `label` level (default: name)
 #   color  optional hex colour, e.g. "#2f9e44"
 #   marker optional shape on its events and in the legend: circle, square, triangle,
-#          diamond, star, ring, cross or heart (helps when colours are hard to tell apart)
+#          diamond, star, ring, cross, heart, or an emoji such as "🎓"
+#          (helps when colours are hard to tell apart)
 # ---------------------------------------------------------------------------
 calendars:
   personal:
@@ -78,6 +79,9 @@ groups:
 #   fields     where to look: title, notes, location (default: all three)
 #   action     busy (default) or hidden
 #   calendars  only apply to these calendars (default: all)
+#   except_audiences  audiences the rule does NOT apply to (e.g. [partner])
+# New setups start with suggested Health / Job search / Money and legal rules;
+# delete the `rules:` list's entries (keep `rules: []`) if you don't want them.
 # ---------------------------------------------------------------------------
 rules:
   - name: Health
@@ -120,7 +124,7 @@ audiences:
     show_all_day_busy: false            # all-day events at `busy` level are usually reminders
     allow_excel: true
     allow_ics: true                     # lets them subscribe in their own calendar app
-    views: [week, month, quarter, year] # which views they can switch between
+    views: [day, week, month, quarter, year] # which views they can switch between
     default_view: week
     timezone: null                      # e.g. Europe/Berlin to show times there by default
     shared_link: true                   # false: only people's own links (below) work
