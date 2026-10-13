@@ -63,6 +63,12 @@
   </section>
 
   <section class="panel">
+    <h2>Updates</h2>
+    <label class="check"><input type="checkbox" name="check_updates" {% if cfg.updates.check %}checked{% endif %}> Check GitHub for a new version once a day</label>
+    <p class="hint">Only asks GitHub which release is newest ({{ cfg.updates.repo }}); nothing about you or your calendars is sent. Updating always waits for you to press the button.</p>
+  </section>
+
+  <section class="panel">
     <h2>Duplicate events</h2>
     <label class="check"><input type="checkbox" name="merge_duplicates" {% if cfg.overrides.merge_duplicates %}checked{% endif %}> Show an event once when it's on more than one of your calendars</label>
     <p class="hint">Glimpse treats events as the same when they share an invite ID, or have the same title and exact times on different calendars. The merged event uses the most detailed level any of its calendars allows, but if any copy is marked private or caught by a privacy rule, that limit wins.</p>

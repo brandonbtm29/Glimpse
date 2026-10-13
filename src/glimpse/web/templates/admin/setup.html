@@ -113,6 +113,48 @@
   {% endif %}
 </section>
 
+<section class="panel" id="updates">
+  <div class="panelhead"><h2>Updates</h2>
+    {% if upd.update_available %}<span class="status wait">Version {{ upd.release.version }} available</span>{% else %}<span class="muted small">You have version {{ version }}</span>{% endif %}
+  </div>
+  {% if upd_error %}<p class="error" role="alert">{{ upd_error }}</p>{% endif %}
+  {% if upd_result %}
+  <p class="{{ 'flash' if upd_result.ok else 'error' }}">
+    <b>Last update ({{ upd_result.at.replace('T', ' ')[:16] }}):</b> {{ upd_result.message }}
+    {% if not upd_result.ok and upd_result.rolled_back_to %} Glimpse went back to the version you had, so nothing changed.{% endif %}
+    {% if not upd_result.ok %} Details are in <code>logs/update.log</code>.{% endif %}
+  </p>
+  {% endif %}
+
+  {% if upd.update_available %}
+  <p>Glimpse <b>{{ upd.release.version }}</b> was released{% if upd.release.published %} on {{ upd.release.published }}{% endif %}. You're running {{ version }}.</p>
+  {% if upd.release.notes %}
+  <details class="notes" open>
+    <summary>What's new</summary>
+    <div class="notes-body">{{ upd.release.notes | release_notes }}</div>
+  </details>
+  {% endif %}
+  {% if upd_ready.ok %}
+  <form method="post" action="/setup/updates/apply" class="inline-form" data-confirm="Update Glimpse to {{ upd.release.version }}? Share links pause for under a minute while it restarts.">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Update now</button>
+    <span class="hint">Your settings are backed up first. If the new version doesn't start, Glimpse goes back to this one by itself.</span>
+  </form>
+  {% else %}
+  <p class="notice">{{ upd_ready.reason }} <a href="{{ upd.release.url }}" target="_blank" rel="noopener">Get {{ upd.release.version }} on GitHub</a>.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">You're up to date{% if upd.release %} (the newest release is {{ upd.release.version }}){% endif %}.
+    Last checked {{ upd.checked_label }}{% if not cfg.updates.check %} · automatic checks are off in Settings{% endif %}.</p>
+  {% if upd.error %}<p class="fine">{{ upd.error }}</p>{% endif %}
+  {% endif %}
+  <form method="post" action="/setup/updates/check" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="secondary small">Check now</button>
+    <a class="small" href="https://github.com/{{ repo }}/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+  </form>
+</section>
+
 {% if not cfg.calendars or not cfg.audiences %}
 <section class="panel">
   <h2>Then: your calendars</h2>

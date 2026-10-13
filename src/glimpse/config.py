@@ -21,6 +21,8 @@ from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 _ENV_REF = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+CONFIG_VERSION = 1  # settings format; bump with a step in migrations.py when config.yaml's shape changes
+DEFAULT_UPDATE_REPO = "brandonbtm29/Glimpse"
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
@@ -310,7 +312,20 @@ class AdminCfg(_Strict):
         return v
 
 
+class UpdatesCfg(_Strict):
+    check: bool = True  # look for a new release on GitHub once a day
+    repo: str = DEFAULT_UPDATE_REPO  # owner/name of the GitHub repository to check
+
+    @field_validator("repo")
+    @classmethod
+    def _repo(cls, v: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", v):
+            raise ValueError("updates.repo must look like owner/name")
+        return v
+
+
 class AppConfig(_Strict):
+    config_version: int = Field(default=CONFIG_VERSION, ge=1)
     timezone: str = "America/New_York"
     refresh_minutes: int = Field(default=10, ge=1, le=1440)
     week_starts: Literal["monday", "sunday"] = "monday"
@@ -323,6 +338,7 @@ class AppConfig(_Strict):
     rules: list[RuleCfg] = Field(default_factory=list)
     audiences: dict[str, AudienceCfg] = Field(default_factory=dict)
     people: dict[str, PersonCfg] = Field(default_factory=dict)
+    updates: UpdatesCfg = Field(default_factory=UpdatesCfg)
     owner_name: str | None = None  # shown to viewers, e.g. "Brandon's time"
 
     @field_validator("timezone")
@@ -433,6 +449,12 @@ def build_config(
     raw: dict[str, Any], env: dict[str, str], base_dir: Path, source: str = "config"
 ) -> AppConfig:
     """Validate an already-parsed config dict against ``env`` (no file access)."""
+    from .migrations import migrate
+
+    try:
+        raw, _ = migrate(raw, CONFIG_VERSION)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
     missing: set[str] = set()
     filled = _substitute(copy.deepcopy(raw), env, missing)
     if missing:

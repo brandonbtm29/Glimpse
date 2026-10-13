@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 
 from .config import (
+    CONFIG_VERSION,
     AppConfig,
     ConfigError,
     build_config,
@@ -296,6 +297,25 @@ class ConfigStore:
         raw, env = self.load()
         return build_config(raw, self._env_for_build(env), self.config_path.parent, str(self.config_path))
 
+    def upgrade_file(self) -> int | None:
+        """Rewrite an older config.yaml in the current settings format.
+
+        Keeps the original as ``config.yaml.v<N>.bak``. Returns the old version, or None.
+        """
+        from .migrations import config_version_of, migrate
+
+        raw = read_raw_config(self.config_path)
+        old = config_version_of(raw)
+        new_raw, changed = migrate(raw, CONFIG_VERSION)
+        if not changed:
+            return None
+        backup = self.config_path.with_name(f"{self.config_path.name}.v{old}.bak")
+        backup.write_bytes(self.config_path.read_bytes())
+        d = self.draft()
+        d.raw = new_raw
+        self.write(d)
+        return old
+
     def draft(self) -> Draft:
         raw, env = self.load()
         return Draft(raw, env)
@@ -378,6 +398,7 @@ def init_files(config_path: Path, env_path: Path | None = None, admin_hash: str 
     if config_path.exists():
         raise ConfigError(f"{config_path} already exists; not overwriting it")
     raw: dict[str, Any] = {
+        "config_version": CONFIG_VERSION,
         "timezone": "America/New_York",
         "refresh_minutes": 10,
         "week_starts": "monday",

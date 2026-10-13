@@ -74,13 +74,18 @@ def run_service(config_path: Path, env_path: Path | None = None) -> int:
             time.sleep(RETRY_SECONDS)
 
 
-def _spawn_background(config_path: Path) -> None:
+def service_command(config_path: Path) -> list[str]:
+    """The command that runs Glimpse in the background for this config."""
     from .autostart import service_executable
 
     exe = service_executable()
-    args = [str(exe), "-c", str(config_path.resolve())]
     if exe == Path(sys.executable):
-        args = [sys.executable, "-m", "glimpse.service", "-c", str(config_path.resolve())]
+        return [sys.executable, "-m", "glimpse.service", "-c", str(config_path.resolve())]
+    return [str(exe), "-c", str(config_path.resolve())]
+
+
+def _spawn_background(config_path: Path) -> None:
+    args = service_command(config_path)
     kwargs: dict = {
         "cwd": str(config_path.resolve().parent),
         "stdin": subprocess.DEVNULL,

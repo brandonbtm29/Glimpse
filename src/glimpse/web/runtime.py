@@ -11,6 +11,7 @@ from ..config import AppConfig, ConfigError
 from ..core import Glimpse
 from ..sources import USER_AGENT
 from ..store import ConfigStore
+from ..updates import UpdateChecker
 from .state import SeenStore
 
 log = logging.getLogger("glimpse.runtime")
@@ -21,6 +22,9 @@ class Runtime:
         self.glimpse = glimpse or Glimpse(cfg)
         self.store = store
         self.seen = SeenStore(store.config_path.parent / "state.json" if store else None)
+        self.updates = UpdateChecker(
+            state_path=store.config_path.parent / "logs" / "update-check.json" if store else None
+        )
         self.reload_error: str | None = None
         self._stamp = self._file_stamp()
 
@@ -76,6 +80,8 @@ class Runtime:
             try:
                 await asyncio.to_thread(self.reload_if_changed)
                 await asyncio.to_thread(self.refresh)
+                if self.cfg.updates.check and self.updates.due():
+                    await asyncio.to_thread(self.updates.check, self.cfg.updates.repo)
             except Exception:
                 log.exception("refresh failed")
             await asyncio.sleep(self.cfg.refresh_minutes * 60)

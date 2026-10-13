@@ -101,6 +101,20 @@ def cmd_preview(args: argparse.Namespace) -> None:
         print("\n  (nothing visible this week)")
 
 
+def cmd_validate(args: argparse.Namespace) -> None:
+    """Load and validate the settings without contacting any calendar (used by updates)."""
+    cfg = _load(args)
+    print(
+        f"config OK: {len(cfg.calendars)} calendars, {len(cfg.audiences)} audiences, {len(cfg.people)} people"
+    )
+
+
+def cmd_version(args: argparse.Namespace) -> None:
+    from . import __version__
+
+    print(__version__)
+
+
 def cmd_links(args: argparse.Namespace) -> None:
     from datetime import date
 
@@ -279,6 +293,8 @@ def main(argv: list[str] | None = None) -> None:
     s.set_defaults(fn=cmd_preview)
 
     sub.add_parser("check", help="validate config and fetch every feed").set_defaults(fn=cmd_check)
+    sub.add_parser("validate", help="validate config without fetching anything").set_defaults(fn=cmd_validate)
+    sub.add_parser("version", help="print the installed version").set_defaults(fn=cmd_version)
     sub.add_parser("links", help="print each audience's links").set_defaults(fn=cmd_links)
     sub.add_parser("new-slug", help="make a random link slug").set_defaults(fn=cmd_new_slug)
     sub.add_parser("new-secret", help="make a server secret key").set_defaults(fn=cmd_new_secret)

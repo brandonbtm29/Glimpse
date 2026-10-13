@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "glimpse-calendar"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Share a filtered, merged view of your Google, Outlook and iCloud calendars, with per-person detail levels and passwords."
 readme = "README.md"
 license = "MIT"
@@ -37,6 +37,14 @@ dependencies = [
     "tzdata>=2024.1", # Windows has no system time-zone database
 ]
 
+[project.urls]
+Homepage = "https://github.com/brandonbtm29/Glimpse"
+Changelog = "https://github.com/brandonbtm29/Glimpse/blob/main/CHANGELOG.md"
+Issues = "https://github.com/brandonbtm29/Glimpse/issues"
+
+[tool.hatch.version]
+path = "src/glimpse/__init__.py"
+
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
 
@@ -64,4 +72,7 @@ select = ["E", "F", "I", "B", "UP", "S"]
 ignore = ["S101"] # asserts are fine in tests
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106"]
+"tests/*" = ["S105", "S106", "S603", "S607"]
+# Updating runs git, pip, tasklist and taskkill with fixed arguments.
+"src/glimpse/update_helper.py" = ["S603", "S607"]
+"src/glimpse/updates.py" = ["S603", "S607"]

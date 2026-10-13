@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% block title %}Updating · Glimpse settings{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="45;url=/setup#updates">{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Updating to {{ tag }}…</h1>
+    <p class="muted">Your settings were backed up to <code>backups/{{ backup }}</code>.</p>
+  </div>
+</header>
+<section class="panel">
+  <ol class="howto">
+    <li>Glimpse downloads {{ tag }} and checks it can read your settings.</li>
+    <li>It restarts with the new version. Share links pause for under a minute.</li>
+    <li>If anything goes wrong, it switches back to {{ version_now }} by itself.</li>
+  </ol>
+  <p class="muted">This page goes back to <a href="/setup#updates">Setup</a> in about 45 seconds, where you'll see how it went. If it says the panel can't be reached, wait a few seconds and reload.</p>
+</section>
+{% endblock %}

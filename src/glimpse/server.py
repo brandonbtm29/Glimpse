@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from .config import AppConfig, load_config
+from .config import AppConfig, ConfigError, load_config
 from .store import ConfigStore
 
 log = logging.getLogger("glimpse")
@@ -39,8 +39,14 @@ def run(
     from .web.app import create_app
     from .web.runtime import Runtime
 
-    cfg = load_config(config_path, env_path)
     store = ConfigStore(config_path, env_path)
+    try:
+        old = store.upgrade_file()
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+    if old:
+        log.info("upgraded config.yaml from settings format %s (original kept as .v%s.bak)", old, old)
+    cfg = load_config(config_path, env_path)
     rt = Runtime(cfg, store)
     host = host or cfg.server.host
     port = port or cfg.server.port

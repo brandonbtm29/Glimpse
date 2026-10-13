@@ -28,9 +28,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
+from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
-from .. import __version__, autostart, tailscale
+from .. import __version__, autostart, tailscale, updates
 from ..config import VIEW_ORDER, WEEKDAYS, AppConfig, AudienceCfg, ConfigError, Level, RuleCfg
 from ..core import add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..events import parse_events
@@ -89,6 +90,7 @@ FLASH = {
     "person_deleted": "Person removed. Their link no longer works.",
     "person_rotated": "New link created for them. Their old link has stopped working.",
     "person_moved": "Moved. Their link now shows the new audience's view.",
+    "checked": "Checked GitHub for updates.",
 }
 VIEW_HELP = {
     "week": "Week: the hour-by-hour grid",
@@ -112,6 +114,23 @@ ADMIN_HEADERS = {
 }
 
 _hasher = PasswordHasher()
+
+
+def release_notes(text: str) -> Markup:
+    """A tiny, safe Markdown subset for release notes: headings, bullets, **bold**, `code`."""
+    out = []
+    for line in (text or "").splitlines():
+        h = re.match(r"^#{1,4}\s+(.*)", line)
+        body = escape(h.group(1) if h else line)
+        body = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", str(body))
+        body = re.sub(r"`([^`]+)`", r"<code>\1</code>", body)
+        if h:
+            out.append(f"<b class='nh'>{body}</b>")
+        elif re.match(r"^\s*[-*]\s+", line):
+            out.append("• " + re.sub(r"^\s*[-*]\s+", "", body))
+        else:
+            out.append(body)
+    return Markup("\n".join(out))  # noqa: S704 - every piece above was escaped first
 
 
 def mask_url(url: str) -> str:
@@ -183,6 +202,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         mask_url=mask_url,
         provider_of=provider_of,
     )
+    templates.env.filters["release_notes"] = release_notes
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
@@ -254,6 +274,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "flash": FLASH.get(request.query_params.get("ok", "")),
             "nav": name.split("/")[-1].split(".")[0],
             "reload_error": rt.reload_error,
+            "update": rt.updates.last if cfg().updates.check and rt.updates.last.update_available else None,
         }
         base.update(ctx)
         return templates.TemplateResponse(request, name, base, status_code=status)
@@ -490,7 +511,67 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return page(
             request,
             "admin/setup.html",
-            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": None},
+            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": None, **update_ctx()},
+            sess,
+        )
+
+    def update_ctx() -> dict:
+        last = rt.updates.last
+        ready = updates.update_readiness(updates.PROJECT_ROOT, fetch=False)
+        result = updates.read_result(store.config_path) if store else None
+        return {
+            "upd": last,
+            "upd_ready": ready,
+            "upd_result": result,
+            "repo": cfg().updates.repo,
+        }
+
+    @app.post("/setup/updates/check")
+    async def updates_check(request: Request):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        await run_in_threadpool(rt.updates.check, cfg().updates.repo, True)
+        return done("/setup#updates", "checked")
+
+    @app.post("/setup/updates/apply", response_class=HTMLResponse)
+    async def updates_apply(request: Request):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        last = rt.updates.last
+        if not (last.release and last.update_available) or store is None:
+            return done("/setup#updates", "checked")
+        tag = last.release.tag
+        ready = await run_in_threadpool(updates.update_readiness, updates.PROJECT_ROOT, tag)
+        ts = ts_status()
+        if not ready.ok:
+            ctx = {
+                "ts": ts,
+                "auto": autostart.status(),
+                "steps": checklist(ts),
+                "result": None,
+                **update_ctx(),
+            }
+            ctx["upd_error"] = ready.reason
+            return page(request, "admin/setup.html", ctx, sess, 400)
+        from ..service import service_command
+
+        backup = await run_in_threadpool(updates.backup_settings, store.config_path, store.env_path)
+        updates.result_path(store.config_path).unlink(missing_ok=True)
+        await run_in_threadpool(
+            updates.start_update,
+            updates.PROJECT_ROOT,
+            store.config_path,
+            tag,
+            service_command(store.config_path),
+            f"http://127.0.0.1:{cfg().server.port}/healthz",
+        )
+        log.info("updating to %s (settings backed up to %s)", tag, backup)
+        return page(
+            request,
+            "admin/updating.html",
+            {"tag": tag, "backup": backup.name, "version_now": __version__},
             sess,
         )
 
@@ -507,7 +588,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return page(
             request,
             "admin/setup.html",
-            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": res},
+            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": res, **update_ctx()},
             sess,
             status=200,
         )
@@ -522,7 +603,14 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return page(
             request,
             "admin/setup.html",
-            {"ts": ts, "auto": autostart.status(), "steps": checklist(ts), "result": None, "check": check},
+            {
+                "ts": ts,
+                "auto": autostart.status(),
+                "steps": checklist(ts),
+                "result": None,
+                "check": check,
+                **update_ctx(),
+            },
             sess,
         )
 
@@ -1375,6 +1463,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             ov["hide_tag"] = str(form.get("hide_tag", "#hide")).strip()
             ov["honor_private_flag"] = form.get("honor_private_flag") == "on"
             ov["merge_duplicates"] = form.get("merge_duplicates") == "on"
+            d.section("updates")["check"] = form.get("check_updates") == "on"
             owner = str(form.get("owner_name", "")).strip()[:40]
             if owner:
                 r["owner_name"] = owner

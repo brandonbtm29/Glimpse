@@ -32,3 +32,13 @@ CI runs the tests on Linux and Windows with Python 3.11 to 3.13, plus a gitleaks
 - More calendar-feed edge cases (unusual time zones, malformed feeds) as test fixtures
 - Translations of the page strings
 - A small admin page on `127.0.0.1` for editing levels without touching YAML
+
+## Releasing
+
+1. Move the `[Unreleased]` notes in `CHANGELOG.md` under a new version heading, and set the same
+   version in `src/glimpse/__init__.py` (the only place it lives).
+2. If `config.yaml`'s shape changed, bump `CONFIG_VERSION` in `src/glimpse/config.py` and add a
+   step to `src/glimpse/migrations.py` that converts the previous format (with a test).
+3. Commit, tag `vX.Y.Z`, push the tag, and publish a GitHub release from it whose notes are that
+   version's changelog section. Installs check the *latest release*, so nothing reaches users until
+   the release is published; never retag a published version.

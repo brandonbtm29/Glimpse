@@ -1,5 +1,9 @@
 # Glimpse
 
+[![CI](https://github.com/brandonbtm29/Glimpse/actions/workflows/ci.yml/badge.svg)](https://github.com/brandonbtm29/Glimpse/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/brandonbtm29/Glimpse)](https://github.com/brandonbtm29/Glimpse/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Share your schedule without sharing your calendar.**
 
 Glimpse merges your Google, Outlook/Microsoft 365 and iCloud calendars into one weekly view, then lets you decide, person by person and calendar by calendar, how much each viewer sees. Your partner can see everything; coworkers can see "Busy" blocks during work hours; a calendar can be hidden from someone entirely. Each audience gets its own link, with an optional password.
@@ -78,8 +82,8 @@ The test suite checks these rules directly, e.g. that no forbidden word appears 
 Requires Python 3.11+.
 
 ```bash
-git clone https://github.com/<you>/glimpse.git
-cd glimpse
+git clone https://github.com/brandonbtm29/Glimpse.git
+cd Glimpse
 python -m venv .venv
 .venv/bin/pip install -e .            # Windows: .venv\Scripts\pip install -e .
 .venv/bin/glimpse -c examples/demo/config.yaml serve --no-admin
@@ -98,7 +102,13 @@ Then open:
 
 ### 2. Install Glimpse
 
-Download this repository (green **Code** button → *Download ZIP*, then unzip it somewhere permanent, e.g. your Documents folder), or `git clone` it. Then:
+Get a copy into a permanent folder (e.g. your Documents folder). The best way is with [git](https://git-scm.com/downloads), because then Glimpse can update itself from the settings panel:
+
+```bash
+git clone https://github.com/brandonbtm29/Glimpse.git
+```
+
+(Or download the [latest release](https://github.com/brandonbtm29/Glimpse/releases/latest) as a ZIP and unzip it. Everything works the same, except updates are done by hand.) Then:
 
 | Host | Do this |
 | --- | --- |
@@ -120,7 +130,12 @@ From then on, manage everything from any of your devices at `https://<host-name>
 
 ### Updating
 
-Put the new version in the same folder (`git pull`, or unzip over it; your `config.yaml`, `.env` and calendar cache are never overwritten) and run the installer again. It stops the running copy, updates it, and starts it again.
+Glimpse checks GitHub once a day for a new [release](https://github.com/brandonbtm29/Glimpse/releases) (you can turn this off in Settings) and shows a note in the settings panel when there is one. Your version is at the bottom of the panel's sidebar; the [changelog](CHANGELOG.md) lists what changed.
+
+- **Installed with git:** open **Setup → Updates** and press **Update now**. Glimpse backs up `config.yaml` and `.env` to `backups/`, switches to the new release, checks it can read your settings, and restarts. If the new version doesn't start, it goes back to the old one by itself. Details go to `logs/update.log`.
+- **Installed from a ZIP:** unzip the new release over the same folder (your `config.yaml`, `.env` and calendar cache are never overwritten) and run the installer again.
+
+Releases only ever move forward through tagged versions; unreleased work on `main` is never installed by the update button. If a release changes the format of `config.yaml`, Glimpse upgrades your file automatically on start and keeps the original as `config.yaml.v<N>.bak`.
 
 ### Optional extras
 
