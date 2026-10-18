@@ -150,6 +150,90 @@
   </form>
 </section>
 
+<section class="panel" id="requests">
+  <div class="panelhead"><h2>Meeting requests</h2>{% if aud.requests.enabled %}<a href="/requests">See requests &rarr;</a>{% endif %}</div>
+  <p class="muted">Let people on this page ask for a meeting: they pick one of your open times or suggest one, and you accept, decline or propose another time. Nothing is added to your calendars until you accept and add it yourself.</p>
+  {% if aud.requests.enabled and not channels %}<p class="notice">You won't be told about new requests until you switch on a <a href="/notifications">notification</a> (phone, email or Discord). They'll still wait on the <a href="/requests">Requests</a> page.</p>{% endif %}
+  <form method="post" action="/audiences/{{ aid }}/requests" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    {% set r = aud.requests %}
+    <label class="check"><input type="checkbox" name="enabled" {% if r.enabled %}checked{% endif %}> People with this link can request a meeting</label>
+    <fieldset class="checks">
+      <legend>Meeting lengths they can choose</legend>
+      {% for m in lengths %}<label class="check inline"><input type="checkbox" name="length" value="{{ m }}" {% if m in r.lengths %}checked{% endif %}> {{ m }} min</label>{% endfor %}
+    </fieldset>
+    <fieldset class="checks">
+      <legend>How they ask</legend>
+      <label class="check"><input type="checkbox" name="slots" {% if r.slots %}checked{% endif %}> Pick one of your open times</label>
+      <label class="check"><input type="checkbox" name="suggest" {% if r.suggest %}checked{% endif %}> Suggest another time</label>
+    </fieldset>
+    <details class="help"{% if r.hours %} open{% endif %}>
+      <summary>When meetings can happen{% if not r.hours %}: {{ 'this audience\'s hours' if aud.hours else 'weekdays 9 to 5' }}{% endif %}</summary>
+      <label class="check"><input type="checkbox" name="own_hours" {% if r.hours %}checked{% endif %}> Use these days and times instead</label>
+      {% set h = aud.request_hours %}
+      <div class="days">
+        {% for d in WEEKDAYS %}<label class="check inline"><input type="checkbox" name="rday" value="{{ d }}" {% if d in h.days %}checked{% endif %}> {{ DAY_LABELS[d] }}</label>{% endfor %}
+      </div>
+      <div class="grid2">
+        <label>From <input type="time" name="rstart" value="{{ h.start.strftime('%H:%M') }}"></label>
+        <label>Until <input type="time" name="rend" value="{{ h.end.strftime('%H:%M') }}"></label>
+      </div>
+    </details>
+    <div class="grid2">
+      <label>Earliest: hours from now
+        <input type="number" name="notice_hours" min="0" max="720" value="{{ r.notice_hours }}">
+        <span class="hint">No last-minute surprises: 24 means nothing sooner than tomorrow at this time.</span>
+      </label>
+      <label>Offer times up to (days ahead)
+        <input type="number" name="days_ahead" min="1" max="120" value="{{ r.days_ahead }}">
+      </label>
+      <label>Start times every
+        <select name="step_minutes">{% for st in [15, 30, 60] %}<option value="{{ st }}" {% if r.step_minutes == st %}selected{% endif %}>{{ st }} minutes</option>{% endfor %}</select>
+      </label>
+    </div>
+    <label><span>Note shown above the form <span class="muted">(optional)</span></span>
+      <textarea name="message" rows="2" maxlength="500" placeholder="Happy to chat about the lab or projects. Meetings are on Zoom unless we say otherwise.">{{ r.message or '' }}</textarea>
+    </label>
+    <p class="hint">Open times are worked out from <em>all</em> your calendars, so people who can request see when you're free across all of them (never what's on them). Adjust which calendars count on the <a href="/requests#availability">Requests</a> page.</p>
+    <div class="actions"><button type="submit">Save meeting requests</button></div>
+  </form>
+</section>
+
+<section class="panel" id="widget">
+  <h2>Website widget</h2>
+  <p class="muted">A small free/busy view of the next days (no titles, no calendar names) that you can put on a lab, course or personal website. It has its own link, so it never reveals this page's link.{% if aud.requests.enabled %} It includes a &ldquo;Request a meeting&rdquo; button.{% endif %}</p>
+  <form method="post" action="/audiences/{{ aid }}/widget" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if aud.widget.enabled %}checked{% endif %}> Widget is on</label>
+    <div class="grid2">
+      <label>Days shown
+        <input type="number" name="days" min="1" max="14" value="{{ aud.widget.days }}">
+        <span class="hint">Starting today; only the days in {{ 'the meeting hours' if aud.requests.enabled else 'this audience\'s hours' }} are shown.</span>
+      </label>
+      <label><span>Websites allowed to show it <span class="muted">(optional, one per line)</span></span>
+        <textarea name="sites" rows="2" placeholder="https://www.uakron.edu" spellcheck="false">{{ aud.widget.sites | join('\n') }}</textarea>
+        <span class="hint">Empty: any website can embed it.</span>
+      </label>
+    </div>
+    <div class="actions"><button type="submit">Save widget</button></div>
+  </form>
+  {% if aud.widget.enabled and embed %}
+  <p class="hint">Paste this into your website's HTML:</p>
+  <div class="copyrow">
+    <input type="text" readonly value="{{ embed }}" aria-label="Embed code">
+    <button type="button" class="secondary small" data-copy="{{ embed }}">Copy</button>
+  </div>
+  <p class="hint"><a href="{{ widget_url }}" target="_blank" rel="noopener">Open the widget on its own</a> to see it.</p>
+  <form method="post" action="/audiences/{{ aid }}/widget" class="inline-form" data-confirm="Make a new widget link? Websites using the old one will show nothing until you update them.">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="action" value="rotate">
+    <button type="submit" class="secondary small">Make a new widget link</button>
+  </form>
+  {% endif %}
+</section>
+
 <section class="panel danger">
   <h2>Delete audience</h2>
   <p class="muted">The link stops working immediately{% if people %}, and so do the {{ people | length }} personal link{{ '' if people | length == 1 else 's' }} in it{% endif %}.</p>

@@ -17,9 +17,10 @@
 <header class="top">
   <div class="heading">
     <h1>{{ aud.title }}</h1>
-    <p class="range">{{ range_label }}{% if person %} <span class="for">· for {{ person }}</span>{% endif %}</p>
+    <p class="range">{{ range_label }}{% if term_label %} <span class="term">· {{ term_label }}</span>{% endif %}{% if person %} <span class="for">· for {{ person }}</span>{% endif %}</p>
   </div>
   <div class="controls">
+    {% if request_url %}<a class="btn req-btn" href="{{ request_url }}">Request a meeting</a>{% endif %}
     {% if views | length > 1 %}
     <nav class="views" aria-label="View">
       {% for name, label in views %}

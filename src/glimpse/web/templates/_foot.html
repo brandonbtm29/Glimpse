@@ -23,5 +23,5 @@
     {% if has_password %}<a href="{{ base }}/logout">Sign out</a>{% endif %}
   </div>
 </footer>
-<p class="get-own">Want to share your own schedule like this? Glimpse is free and open source, and runs on your own computer. <a href="{{ repo_url }}" target="_blank" rel="noopener">Get started with Glimpse</a></p>
+<p class="get-own">Want to share your own schedule like this? Glimpse is free and open source, and runs on your own computer. <a href="{{ repo_url }}" target="_blank" rel="noopener">Get started with Glimpse</a>{% if support_url %} · <a class="support" href="{{ support_url }}" target="_blank" rel="noopener">Support the project</a>{% endif %}</p>
 <script src="/static/viewer.js?v={{ version }}" defer></script>

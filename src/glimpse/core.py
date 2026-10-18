@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from .config import ALL_WEEKS, AppConfig, AudienceCfg
 from .events import Event, collect_events
 from .policy import VisibleEvent, visible_events
+from .school import SchoolCalendar
 from .sources import FeedCache
 
 
@@ -55,6 +56,7 @@ class Glimpse:
         self.cache = cache or FeedCache(cfg)
         self._events: OrderedDict[tuple, list[Event]] = OrderedDict()
         self.generation = 0
+        self.school = SchoolCalendar(cfg)
 
     def apply(self, new_cfg: AppConfig) -> list[str]:
         """Switch to a new config without a restart.
@@ -72,13 +74,23 @@ class Glimpse:
             else:
                 cache.forget(cid)  # never show the old link's events under a new link
                 changed.append(cid)
+        old_school = self.school
         self.cfg, self.cache = new_cfg, cache
+        self.school = SchoolCalendar(new_cfg)
+        if old_school.text and new_cfg.school.calendar_url == old_school.cfg.school.calendar_url:
+            self.school.etag = old_school.etag
+            self.school.last_success = old_school.last_success
+            self.school._set_text(old_school.text)
         self.generation += 1
         self._events.clear()
         return changed
 
     def today(self) -> date:
         return datetime.now(self.cfg.tz).date()
+
+    def now(self) -> datetime:
+        """The current moment (tests pin it, like :meth:`today`)."""
+        return datetime.now(UTC)
 
     def today_in(self, tz: ZoneInfo) -> date:
         """Today's date in ``tz`` (consistent with :meth:`today`, which tests may pin)."""
@@ -96,11 +108,11 @@ class Glimpse:
         return found
 
     def events_between(self, start: datetime, end: datetime) -> list[Event]:
-        key = (self.generation, self.cache.fingerprint(), start, end)
+        key = (self.generation, self.cache.fingerprint(), self.school.version, start, end)
         if key in self._events:
             self._events.move_to_end(key)
             return self._events[key]
-        evs = collect_events(self.cache.texts(), start, end, self.cfg.tz)
+        evs = self.school.filter(collect_events(self.cache.texts(), start, end, self.cfg.tz))
         self._events[key] = evs
         while len(self._events) > 32:
             self._events.popitem(last=False)

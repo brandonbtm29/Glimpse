@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Your meeting request{% endblock %}
+{% set who = owner_first or "They" %}
+{% block body %}
+<main class="page req-page">
+  <div class="welcome">
+    <svg class="logo" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><rect x="3" y="5" width="26" height="24" rx="5" fill="#3b6fd8"/><rect x="3" y="5" width="26" height="7" rx="3" fill="#2a55b0"/><circle cx="16" cy="20" r="4" fill="#fff"/></svg>
+    <div>
+      <p class="hello">Your meeting request</p>
+      <p class="whose">{% if owner_first %}With {{ owner_first }}{% endif %}{% if aud %} · {{ aud.title }}{% endif %}</p>
+    </div>
+  </div>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if sent %}<p class="flash" role="status">Sent!{% if emailed %} You'll get an email at {{ item.email }} when there's an answer.{% else %} Bookmark this page to check for an answer.{% endif %}</p>{% endif %}
+
+  <section class="req-status st-{{ item.status }}">
+    {% if item.status == 'pending' %}
+      <h1>Waiting for an answer</h1>
+      <p class="when">{{ when }}</p>
+      {% if item.kind == 'suggested' %}<p class="muted">A time you suggested.</p>{% endif %}
+    {% elif item.status == 'accepted' %}
+      <h1>Confirmed</h1>
+      <p class="when">{{ when }}</p>
+      <p><a class="btn primary" href="/req/{{ item.token }}/invite.ics" download>Add to your calendar</a></p>
+    {% elif item.status == 'countered' %}
+      <h1>{{ who }} suggested another time</h1>
+      <p class="when">{{ counter }}</p>
+      <p class="muted">Instead of {{ when }}.</p>
+      {% if not past %}
+      <form method="post" class="actions">
+        <input type="hidden" name="ft" value="{{ ft }}">
+        <button type="submit" name="action" value="accept_counter">That works</button>
+        <button type="submit" name="action" value="decline_counter" class="secondary">That doesn't work</button>
+      </form>
+      {% endif %}
+    {% elif item.status == 'declined' %}
+      <h1>Not this time</h1>
+      <p class="when">{{ when }}</p>
+    {% else %}
+      <h1>Cancelled</h1>
+      <p class="when">{{ when }}</p>
+    {% endif %}
+    {% if item.reply %}<blockquote class="reply">{{ item.reply }}<cite>{{ owner_first or "Reply" }}</cite></blockquote>{% endif %}
+  </section>
+
+  {% if item.status in ('pending', 'accepted') and not past %}
+  <form method="post" class="cancel-req">
+    <input type="hidden" name="ft" value="{{ ft }}">
+    <button type="submit" name="action" value="cancel" class="link danger" data-confirm="Cancel this request?">Cancel this request</button>
+  </form>
+  {% endif %}
+  <p class="fine">This page is private to you: anyone with its link can see and cancel this request.</p>
+</main>
+<script src="/static/viewer.js?v={{ version }}" defer></script>
+{% endblock %}

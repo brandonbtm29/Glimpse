@@ -14,9 +14,11 @@
     {% for week in view.weeks %}
     <div class="mrow">
       {% for cell in week %}
-      <div class="mcell{% if not cell.in_month %} out{% endif %}{% if not cell.in_range and cell.in_month %} locked{% endif %}{% if cell.is_today %} today{% endif %}">
+      {% set snote = school_days.get(cell.day) if school_days and cell.in_month else None %}
+      <div class="mcell{% if not cell.in_month %} out{% endif %}{% if not cell.in_range and cell.in_month %} locked{% endif %}{% if cell.is_today %} today{% endif %}{% if snote %} schoolday{% endif %}"{% if snote %} title="{{ snote }}"{% endif %}>
         {% set can_open = week_link and cell.in_range and cell.in_month %}
         {% if can_open %}<a class="mday" href="{{ base }}/week/{{ cell.day.isoformat() }}" aria-label="Week of {{ fmt_day(cell.day) }}">{{ cell.day.day }}</a>{% else %}<span class="mday">{{ cell.day.day }}</span>{% endif %}
+        {% if snote %}<span class="sday">{{ snote }}</span>{% endif %}
         {% for chip in cell.chips %}
         <div class="chip {{ chip.color_class }}{% if chip.ev.all_day %} allday{% endif %}" style="{% if chip.color %}--ev: {{ chip.color }};{% endif %}" title="{{ chip.ev.title }}{% if chip.when %} · {{ fmt_time(chip.ev.start) }}–{{ fmt_time(chip.ev.end) }}{% endif %}{% if chip.ev.location %} · {{ chip.ev.location }}{% endif %}">
           {% if chip.ev.marker %}<span class="mk-in" aria-hidden="true">{{ chip.ev.marker }}</span>{% endif %}{% if chip.when %}<span class="when">{{ chip.when }}</span> {% endif %}<span class="t">{{ chip.ev.title }}</span>

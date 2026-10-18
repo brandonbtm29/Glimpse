@@ -10,3 +10,10 @@
   link.textContent = "Show your time (" + zone.split("/").pop().replace(/_/g, " ") + ")";
   link.hidden = false;
 })();
+
+// Ask before buttons marked data-confirm (e.g. cancelling a meeting request).
+document.addEventListener("submit", function (e) {
+  var btn = e.submitter;
+  var msg = btn && btn.getAttribute("data-confirm");
+  if (msg && !window.confirm(msg)) e.preventDefault();
+});

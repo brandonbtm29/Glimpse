@@ -75,9 +75,12 @@ def test_example_config_is_valid(tmp_path):
         "GLIMPSE_PERSON_ALEX_SLUG=" + "a" * 22 + "\nGLIMPSE_PERSON_PRIYA_SLUG=" + "b" * 22 + "\n"
         f"PARTNER_PW_HASH='{PasswordHasher().hash('x' * 10)}'\n"
         f"GLIMPSE_ADMIN_PASSWORD_HASH='{PasswordHasher().hash('y' * 10)}'\n"
+        "GLIMPSE_AUD_COWORKERS_WIDGET_SLUG=" + "w" * 22 + "\nGLIMPSE_NTFY_TOPIC=glimpse-topic\n"
+        "GLIMPSE_SMTP_PASSWORD=pw\nGLIMPSE_DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/x\n"
     )
     cfg = load_config(tmp_path / "config.yaml")
     assert set(cfg.audiences) == {"partner", "coworkers"}
+    assert cfg.audiences["coworkers"].requests.enabled and cfg.school.terms
 
 
 def test_demo_config_is_valid():

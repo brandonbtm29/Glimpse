@@ -36,8 +36,10 @@
     <div class="row head">
       <div class="gutter"></div>
       {% for d in view.days %}
-      <div class="dayhead{% if d.is_today %} today{% endif %}">
+      {% set snote = school_days.get(d.day) if school_days else None %}
+      <div class="dayhead{% if d.is_today %} today{% endif %}{% if snote %} schoolday{% endif %}"{% if snote %} title="{{ snote }}"{% endif %}>
         <span class="dow">{{ d.dow }}</span><span class="dnum">{{ d.day.day }}</span>
+        {% if snote %}<span class="sday">{{ snote }}</span>{% endif %}
       </div>
       {% endfor %}
     </div>
@@ -78,7 +80,7 @@
   <section class="agenda" aria-label="Week list">
     {% for d in view.days %}
     <div class="aday{% if d.is_today %} today{% endif %}">
-      <h2>{{ d.label }}{% if d.is_today %} <span class="badge">Today</span>{% endif %}</h2>
+      <h2>{{ d.label }}{% if d.is_today %} <span class="badge">Today</span>{% endif %}{% if school_days and school_days.get(d.day) %} <span class="sday">{{ school_days.get(d.day) }}</span>{% endif %}</h2>
       {% set items = d.all_day + (d.timed | sort(attribute='start')) %}
       {% if items %}
       <ul>

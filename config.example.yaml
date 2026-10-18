@@ -131,6 +131,21 @@ audiences:
     calendars:
       classes: label                    # ...except Classes, which shows only "Class"
       family: hidden
+    requests:                           # optional: let them ask for a meeting
+      enabled: true
+      lengths: [30, 60]                 # minutes they can choose
+      slots: true                       # pick one of your open times
+      suggest: true                     # ...or suggest another time
+      hours: null                       # when meetings can happen; null = the audience's hours
+      notice_hours: 24                  # nothing sooner than this
+      days_ahead: 14                    # how far ahead open times are offered
+      step_minutes: 30                  # start times every 15, 30 or 60 minutes
+      message: "Meetings are on Zoom unless we say otherwise."
+    widget:                             # optional: free/busy view to embed in a website
+      enabled: false
+      slug: ${GLIMPSE_AUD_COWORKERS_WIDGET_SLUG}  # its own link (the panel makes one)
+      sites: [https://www.example.edu]  # sites allowed to embed it; [] = any
+      days: 7
 
 # ---------------------------------------------------------------------------
 # People (optional): someone's own link into an audience. Move them by changing
@@ -151,3 +166,55 @@ people:
 
 # Shown to viewers in other time zones ("Show Brandon's time") and on expired links.
 owner_name: null
+
+# Show a small "Support the project" link at the bottom of shared pages (off by default).
+support_link: false
+
+# ---------------------------------------------------------------------------
+# Meeting requests: how open times are worked out, and how you hear about requests.
+# Open times leave out every busy event on all calendars (not just what an
+# audience sees) plus waiting/accepted requests. Events marked "free" never count.
+# ---------------------------------------------------------------------------
+availability:
+  ignore_calendars: [family]            # calendars that never make you busy
+  buffer_minutes: 10                    # kept free before and after busy times
+  all_day_busy: false                   # true: all-day events (trips) block the whole day
+
+notify:                                 # switch on any mix; secrets live in .env
+  ntfy:                                 # phone push via the free ntfy app
+    enabled: true
+    server: https://ntfy.sh
+    topic: ${GLIMPSE_NTFY_TOPIC}        # long and unguessable; subscribe to it in the app
+  email:
+    enabled: false
+    smtp_host: smtp.gmail.com           # Gmail: use an app password
+    smtp_port: 587
+    security: starttls                  # starttls (587), ssl (465) or none
+    username: you@gmail.com
+    password: ${GLIMPSE_SMTP_PASSWORD}
+    to_addr: null                       # where your notifications go (default: the sender)
+    notify_requester: true              # also email people about their own requests
+  discord:
+    enabled: false
+    webhook_url: ${GLIMPSE_DISCORD_WEBHOOK}
+  panel_url: null                       # link in notifications; default: your tailnet address :8443
+
+# ---------------------------------------------------------------------------
+# School mode (optional): terms, breaks and exam weeks.
+# Terms are read from `calendar_url` (your school's academic calendar feed, if
+# it has one) and/or typed in below; typed-in terms win for the same dates.
+# ---------------------------------------------------------------------------
+school:
+  enabled: false
+  name: University of Example
+  calendar_url: null
+  class_calendars: [classes]            # these pause over breaks and between terms
+  pause_classes: true
+  show_viewers: true                    # viewers see "Fall 2026 · Week 7" and break days
+  terms:
+    - name: Fall 2026
+      start: 2026-08-24                 # first day of classes
+      end: 2026-12-12                   # last day, including finals
+      periods:
+        - { name: Thanksgiving Break, start: 2026-11-25, end: 2026-11-29, kind: break }
+        - { name: Finals, start: 2026-12-07, end: 2026-12-12, kind: exams }  # break, exams or closed

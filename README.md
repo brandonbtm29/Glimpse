@@ -38,6 +38,10 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **People with their own links**: put someone in an audience with a personal link. Move them between audiences, give the link an end date, see when they last looked, or cut off just them. Switch an audience's shared link off once everyone has their own.
 - **Day, week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
 - **Time zones**: viewers see your schedule in their own time (detected, or picked from a list), with your time a click away. Hour limits always stay on your clock.
+- **Meeting requests**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, and they get a calendar file once it's confirmed. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
+- **Notifications on your phone, by email or in Discord**: switch on any mix of the three to hear about new requests right away.
+- **Website widget**: a small free/busy view of the next few days (no titles) for a lab, course or personal site, with an optional "Request a meeting" button. It has its own link and you choose which sites may embed it.
+- **School mode**: tell Glimpse your semesters (typed in, or read from your school's academic calendar feed). Viewers see "Fall 2026 · Week 7" and break days, and class events pause over breaks and between terms.
 - **Excel download** of any visible week or month (works on phones too), and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
 - Recurring events, moved/cancelled instances, all-day and overnight events, and daylight-saving changes all handled.
 - **One double-click install** on Windows and macOS, then a guided setup in the browser. No administrator rights needed.
@@ -166,6 +170,46 @@ With **People**, each person gets their own link instead, so cutting off one per
 
 **Testing a link from outside:** on the Setup page, **Test from the internet** checks your share links the way someone without Tailscale opens them. If a link works there but not on your own laptop with Tailscale switched off, your laptop is still remembering the private Tailscale address: try a phone on mobile data, or clear the browser's DNS cache.
 
+### Meeting requests
+
+Turn on **Meeting requests** on an audience's page. Its shared page then gets a **Request a meeting** button that leads to:
+
+- **Open times** to pick from, inside the hours you choose (by default the audience's hours, else weekdays 9–5), at least a day ahead and up to two weeks out (both adjustable), in the viewer's own time zone; and/or
+- **Suggest another time**, for when none of those work.
+
+Requests wait on the panel's **Requests** page, where you accept, decline, or propose a new time, with an optional message. Glimpse can't write to Google, Outlook or iCloud, so after accepting use **Add to my calendar** (a one-event file your calendar app opens). The requester gets a private status page where they can see your answer, accept a new time, add the meeting to their calendar, or cancel. Waiting and accepted requests keep their time off the open list so nobody double-books you.
+
+Open times are worked out from every calendar except ones you mark on the Requests page as never making you busy (holidays, birthdays), with an optional buffer between meetings. Events marked "free" never block time. Requests are kept in `requests.json` beside your config. There's a limit on how many requests one link or one network address can send.
+
+### Notifications
+
+On **Notifications**, switch on any of:
+
+| Channel | You need | Setup |
+| --- | --- | --- |
+| **Phone** | the free [ntfy](https://ntfy.sh) app | Glimpse suggests a random topic; subscribe to it in the app. Tapping a notification opens your Requests page (with Tailscale on). |
+| **Email** | an email account with SMTP | For Gmail: turn on 2-Step Verification, create an app password, use `smtp.gmail.com`, port 587. Can also email requesters a confirmation and your answer, with a calendar file. |
+| **Discord** | a server you manage | Channel settings › Integrations › Webhooks › New Webhook › Copy Webhook URL. |
+
+Each has a **Send a test** button. Topics, passwords and webhook links are stored in `.env`, never in `config.yaml`.
+
+### Website widget
+
+On an audience's page, turn on **Website widget** and copy the embed code into your site:
+
+```html
+<iframe src="https://your-pc.your-tailnet.ts.net/w/…" title="My availability" loading="lazy"
+        style="width:100%;max-width:640px;height:340px;border:0;border-radius:10px"></iframe>
+```
+
+It shows busy blocks for the next days (no titles, no calendar names) in the visitor's time zone, plus a **Request a meeting** button when requests are on. List the sites allowed to embed it, or leave the list empty to allow any. It has its own link, separate from the audience's, so publishing it never reveals the audience's page; **Make a new widget link** retires the old one.
+
+### School mode
+
+On **School**, switch it on and either paste your school's academic calendar feed (if it publishes one) or type in each term's first and last day, then its breaks and exam weeks. Glimpse reads terms from a feed by looking for events like "Classes begin", "Last day of classes", "Thanksgiving break" and "Final exams"; check what it found, and use **Copy these so I can edit them** to fix anything. Typed-in terms always win.
+
+Then tick the calendars that hold your classes. During breaks and between terms their events are hidden (handy when a class series runs straight through Thanksgiving), and viewers see the term, the week number and break days. Untick **Show viewers** to keep the term info to yourself.
+
 ## Detail levels
 
 | Level | The viewer sees |
@@ -221,6 +265,20 @@ pip install pre-commit && pre-commit install   # secret scanning + lint on every
 ```
 
 The privacy rules live in [`src/glimpse/policy.py`](src/glimpse/policy.py) as pure functions with no web or network code, so they're easy to test. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+
+## Support
+
+Glimpse is free and open source, and always will be. If it's useful to you:
+
+- **Star the repository** and tell a friend who juggles several calendars.
+- **Report bugs and ideas** in [Issues](https://github.com/brandonbtm29/Glimpse/issues).
+- **Chip in toward development**, once, whatever amount you like. Donation links will appear here as soon as they're set up.
+
+Shared pages can show a small "Support the project" link at the bottom; it's off unless you switch it on in Settings.
+
+## How this was built
+
+Glimpse is written and maintained by Brandon T. McReynolds with the help of an AI coding assistant: it was co-developed with Claude (Anthropic) from the first version, and commits list Claude as a co-author. Brandon directs the work, reviews and tests the changes, and is responsible for the project.
 
 ## License
 

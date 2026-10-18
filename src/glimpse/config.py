@@ -283,6 +283,64 @@ def _check_zone(v: str | None) -> str | None:
     return v
 
 
+REQUEST_LENGTHS = [15, 30, 45, 60, 90, 120]
+
+
+class RequestsCfg(_Strict):
+    """Lets an audience ask for a meeting: pick an open slot, or suggest a time."""
+
+    enabled: bool = False
+    lengths: list[int] = Field(default_factory=lambda: [30, 60])  # minutes offered
+    slots: bool = True  # show open times to pick from
+    suggest: bool = True  # allow "suggest another time"
+    hours: HoursCfg | None = None  # when meetings can happen; None = the audience's hours, else 9-5 weekdays
+    notice_hours: int = Field(default=24, ge=0, le=24 * 30)  # earliest a meeting can start from now
+    days_ahead: int = Field(default=14, ge=1, le=120)  # how far ahead open times are offered
+    step_minutes: Literal[15, 30, 60] = 30  # start times every N minutes
+    message: str | None = Field(default=None, max_length=500)  # shown above the request form
+
+    @field_validator("lengths")
+    @classmethod
+    def _lengths(cls, v: list[int]) -> list[int]:
+        out = sorted({int(x) for x in v if 5 <= int(x) <= 480})
+        if not out:
+            raise ValueError("offer at least one meeting length")
+        return out
+
+    @model_validator(mode="after")
+    def _some_way(self) -> RequestsCfg:
+        if self.enabled and not (self.slots or self.suggest):
+            raise ValueError("requests need open times, suggested times, or both")
+        return self
+
+
+class WidgetCfg(_Strict):
+    """A small free/busy view (no titles) that can be embedded in another website."""
+
+    enabled: bool = False
+    slug: str | None = None  # its own link, separate from the audience's
+    sites: list[str] = Field(default_factory=list)  # websites allowed to embed it; empty = any
+    days: int = Field(default=7, ge=1, le=14)
+
+    @field_validator("slug")
+    @classmethod
+    def _slug(cls, v: str | None) -> str | None:
+        return None if v is None or not v.strip() or v.strip().lower() in ("null", "none") else _check_slug(v)
+
+    @field_validator("sites")
+    @classmethod
+    def _sites(cls, v: list[str]) -> list[str]:
+        out = []
+        for s in v:
+            s = s.strip().rstrip("/")
+            if not s:
+                continue
+            if not re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d+)?", s):
+                raise ValueError(f"site {s!r} should look like https://example.com (no path)")
+            out.append(s)
+        return out
+
+
 class AudienceCfg(_Strict):
     title: str = "Schedule"
     slug: str
@@ -301,6 +359,12 @@ class AudienceCfg(_Strict):
     timezone: str | None = None  # zone viewers see by default; None = yours
     views: list[ViewName] = Field(default_factory=lambda: list(VIEW_ORDER))
     default_view: ViewName = "week"
+    requests: RequestsCfg = Field(default_factory=RequestsCfg)
+    widget: WidgetCfg = Field(default_factory=WidgetCfg)
+
+    @property
+    def request_hours(self) -> HoursCfg:
+        return self.requests.hours or self.hours or HoursCfg(start=time(9, 0), end=time(17, 0))
 
     @field_validator("slug")
     @classmethod
@@ -407,6 +471,141 @@ class UpdatesCfg(_Strict):
         return v
 
 
+def _blank_none(v: str | None) -> str | None:
+    return None if v is None or not str(v).strip() or str(v).strip().lower() in ("null", "none") else v
+
+
+class NtfyCfg(_Strict):
+    """Phone push through ntfy (https://ntfy.sh): install the app and subscribe to the topic."""
+
+    enabled: bool = False
+    server: str = "https://ntfy.sh"
+    topic: str | None = None  # acts like a password: anyone who knows it can read the messages
+    token: str | None = None  # access token, for a private ntfy server
+
+    @field_validator("topic", "token")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        return _blank_none(v)
+
+    @field_validator("server")
+    @classmethod
+    def _server(cls, v: str) -> str:
+        v = v.strip().rstrip("/")
+        if not re.fullmatch(r"https?://[^\s/]+(/[^\s]*)?", v):
+            raise ValueError("ntfy server should look like https://ntfy.sh")
+        return v
+
+
+class EmailCfg(_Strict):
+    """Email through any SMTP account (e.g. Gmail with an app password)."""
+
+    enabled: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    security: Literal["starttls", "ssl", "none"] = "starttls"
+    username: str | None = None
+    password: str | None = None
+    from_addr: str | None = None  # defaults to the username
+    to_addr: str | None = None  # where your notifications go; defaults to from_addr
+    notify_requester: bool = True  # also email people about their own requests
+
+    @field_validator("smtp_host", "username", "password", "from_addr", "to_addr")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        return _blank_none(v)
+
+    @property
+    def sender(self) -> str | None:
+        return self.from_addr or self.username
+
+    @property
+    def owner_addr(self) -> str | None:
+        return self.to_addr or self.sender
+
+
+class DiscordCfg(_Strict):
+    """A message in a Discord channel through a webhook (Channel settings > Integrations)."""
+
+    enabled: bool = False
+    webhook_url: str | None = None
+
+    @field_validator("webhook_url")
+    @classmethod
+    def _url(cls, v: str | None) -> str | None:
+        v = _blank_none(v)
+        if v and not re.match(
+            r"^https://(discord(app)?\.com|canary\.discord\.com|ptb\.discord\.com)/api/webhooks/", v
+        ):
+            raise ValueError("Discord webhook links start with https://discord.com/api/webhooks/")
+        return v
+
+
+class NotifyCfg(_Strict):
+    ntfy: NtfyCfg = Field(default_factory=NtfyCfg)
+    email: EmailCfg = Field(default_factory=EmailCfg)
+    discord: DiscordCfg = Field(default_factory=DiscordCfg)
+    panel_url: str | None = None  # link in notifications; defaults to the tailnet panel address
+
+    @field_validator("panel_url")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        return _blank_none(v)
+
+
+class AvailabilityCfg(_Strict):
+    """How open times are worked out for meeting requests and widgets."""
+
+    ignore_calendars: list[str] = Field(default_factory=list)  # never make you busy (e.g. Holidays)
+    buffer_minutes: int = Field(default=0, ge=0, le=120)  # kept free before and after busy times
+    all_day_busy: bool = False  # all-day events (trips, conferences) block the whole day
+
+
+class PeriodCfg(_Strict):
+    """A named stretch of days in a term: a break, exam week, a closed day."""
+
+    name: str
+    start: date
+    end: date  # last day, inclusive
+    kind: Literal["break", "exams", "closed"] = "break"
+
+    @model_validator(mode="after")
+    def _order(self) -> PeriodCfg:
+        if self.end < self.start:
+            raise ValueError(f"{self.name}: end is before start")
+        return self
+
+
+class TermCfg(_Strict):
+    name: str  # "Fall 2026"
+    start: date  # first day of classes
+    end: date  # last day of the term (including exams), inclusive
+    periods: list[PeriodCfg] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _order(self) -> TermCfg:
+        if self.end < self.start:
+            raise ValueError(f"{self.name}: end is before start")
+        return self
+
+
+class SchoolCfg(_Strict):
+    """School mode: know the semester, its breaks and exam weeks."""
+
+    enabled: bool = False
+    name: str | None = None  # e.g. "University of Akron"
+    calendar_url: str | None = None  # the school's academic calendar feed; terms are read from it
+    terms: list[TermCfg] = Field(default_factory=list)  # typed in by hand; these win over the feed
+    class_calendars: list[str] = Field(default_factory=list)  # calendars with your classes
+    pause_classes: bool = True  # hide class events during breaks and between terms
+    show_viewers: bool = True  # viewers see "Fall 2026 · Week 7" and break days
+
+    @field_validator("name", "calendar_url")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        return _blank_none(v)
+
+
 @dataclass(frozen=True)
 class CalDisplay:
     key: str  # calendar id, or "group:<id>"
@@ -436,7 +635,11 @@ class AppConfig(_Strict):
     audiences: dict[str, AudienceCfg] = Field(default_factory=dict)
     people: dict[str, PersonCfg] = Field(default_factory=dict)
     updates: UpdatesCfg = Field(default_factory=UpdatesCfg)
+    notify: NotifyCfg = Field(default_factory=NotifyCfg)
+    availability: AvailabilityCfg = Field(default_factory=AvailabilityCfg)
+    school: SchoolCfg = Field(default_factory=SchoolCfg)
     owner_name: str | None = None  # shown to viewers, e.g. "Brandon's time"
+    support_link: bool = False  # a small "Support Glimpse" link at the bottom of shared pages
 
     @field_validator("timezone")
     @classmethod
@@ -484,6 +687,22 @@ class AppConfig(_Strict):
             if person.slug in slugs:
                 raise ValueError(f"person {pid!r} has the same link as {slugs[person.slug]!r}")
             slugs[person.slug] = pid
+        for aid, aud in self.audiences.items():
+            if aud.widget.enabled and not aud.widget.slug:
+                raise ValueError(f"audience {aid!r} has a widget turned on but no widget slug")
+            if aud.widget.slug:
+                if aud.widget.slug in slugs:
+                    raise ValueError(
+                        f"audience {aid!r}'s widget has the same link as {slugs[aud.widget.slug]!r}"
+                    )
+                slugs[aud.widget.slug] = f"{aid} widget"
+        for where, ids in (
+            ("availability.ignore_calendars", self.availability.ignore_calendars),
+            ("school.class_calendars", self.school.class_calendars),
+        ):
+            for cid in ids:
+                if cid not in self.calendars:
+                    raise ValueError(f"{where} lists calendar {cid!r}, which is not defined")
         return self
 
     @property

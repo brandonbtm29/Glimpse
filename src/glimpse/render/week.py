@@ -29,7 +29,7 @@ def fmt_day(d: date) -> str:
 
 
 def fmt_range(start: date, end_inclusive: date) -> str:
-    if start.month == end_inclusive.month:
+    if start.month == end_inclusive.month and start.year == end_inclusive.year:
         return f"{MONTHS[start.month - 1]} {start.day}–{end_inclusive.day}, {start.year}"
     if start.year == end_inclusive.year:
         return (

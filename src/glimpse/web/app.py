@@ -12,7 +12,7 @@ import hmac
 import logging
 import re
 import zoneinfo
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -21,14 +21,18 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from .. import __version__
-from ..config import AppConfig
+from ..availability import busy_blocks_for_days, busy_times, fits_rules, is_free, open_slots, request_range
+from ..config import AppConfig, AudienceCfg
 from ..core import Glimpse, add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
+from ..notify import Note, Notifier, invite_ics
 from ..render.ics import to_ics
 from ..render.periods import build_heat, build_month
 from ..render.week import DAY_NAMES, build_week, fmt_day, fmt_time
 from ..render.xlsx import month_to_xlsx, week_to_xlsx
+from ..requests_store import MAX_PENDING_PER_VIEWER, MeetingRequest, RequestStore
 from .auth import (
     SESSION_DAYS,
     LoginLimiter,
@@ -122,10 +126,15 @@ def create_app(
     glimpse: Glimpse | None = None,
     background_refresh: bool = True,
     seen: SeenStore | None = None,
+    requests: RequestStore | None = None,
+    notifier: Notifier | None = None,
 ) -> FastAPI:
     g = glimpse or Glimpse(cfg)
     seen = seen or SeenStore(None)
+    reqs = requests or RequestStore(None)
+    notes = notifier or Notifier(lambda: g.cfg)
     limiter = LoginLimiter()
+    sent_by_ip: dict[str, list[float]] = {}
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     templates.env.globals.update(version=__version__, fmt_time=fmt_time, fmt_day=fmt_day)
 
@@ -138,6 +147,7 @@ def create_app(
                 while True:
                     try:
                         await asyncio.to_thread(g.cache.refresh_all)
+                        await asyncio.to_thread(refresh_school)
                     except Exception:
                         log.exception("refresh failed")
                     await asyncio.sleep(g.cfg.refresh_minutes * 60)
@@ -148,13 +158,26 @@ def create_app(
             task.cancel()
         seen.flush()
 
+    def refresh_school() -> None:
+        import httpx
+
+        from ..sources import USER_AGENT
+
+        with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as c:
+            g.school.refresh(c)
+
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
     @app.middleware("http")
     async def headers(request: Request, call_next):
         resp = await call_next(request)
+        embeddable = "frame-ancestors 'none'" not in resp.headers.get(
+            "Content-Security-Policy", "frame-ancestors 'none'"
+        )
         for k, v in SECURITY_HEADERS.items():
+            if k == "X-Frame-Options" and embeddable:
+                continue  # the widget sets its own frame-ancestors list
             resp.headers.setdefault(k, v)
         return resp
 
@@ -200,7 +223,9 @@ def create_app(
 
     def safe_next(v: Viewer, value: str) -> str:
         """Only paths inside this viewer's own pages."""
-        m = re.fullmatch(r"(week|month|quarter|year)/(\d{4}-\d{2}-\d{2})", value or "")
+        if value == "request":
+            return value
+        m = re.fullmatch(r"(day|week|month|quarter|year)/(\d{4}-\d{2}-\d{2})", value or "")
         if m and parse_day(m.group(2)):
             return value
         return f"week/{value}" if parse_day(value or "") else ""
@@ -255,6 +280,10 @@ def create_app(
             "owner_first": (g.cfg.owner_name or "").strip() or None,
             "refresh_minutes": g.cfg.refresh_minutes,
             "repo_url": f"https://github.com/{g.cfg.updates.repo}",
+            "support_url": f"https://github.com/{g.cfg.updates.repo}#support" if g.cfg.support_link else None,
+            "request_url": f"{v.base}/request" if aud.requests.enabled else None,
+            "term_label": None,
+            "school_days": {},
             **zone_ctx(request, v, tz),
         }
 
@@ -272,6 +301,421 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def root(request: Request):
         return not_found(request)
+
+    # -- meeting requests and the widget ---------------------------------------------------------
+    # Registered before the /{kind}/{slug} pages so /req/... and /w/... aren't taken for viewer links.
+
+    REQ_SALT = "glimpse-request-form"
+    SEND_LIMIT, SEND_WINDOW = 5, 3600.0  # requests per IP per hour
+
+    def form_token(key: str) -> str:
+        return URLSafeTimedSerializer(g.cfg.server.secret_key, salt=REQ_SALT).dumps(key)
+
+    def form_token_ok(token: str, key: str) -> bool:
+        try:
+            got = URLSafeTimedSerializer(g.cfg.server.secret_key, salt=REQ_SALT).loads(
+                token, max_age=6 * 3600
+            )
+        except BadSignature:
+            return False
+        return hmac.compare_digest(str(got), key)
+
+    def send_allowed(ip: str) -> bool:
+        import time as _time
+
+        now = _time.monotonic()
+        recent = [t for t in sent_by_ip.get(ip, []) if now - t < SEND_WINDOW]
+        sent_by_ip[ip] = recent
+        if len(sent_by_ip) > 5000:  # forget the oldest callers rather than grow forever
+            for k in list(sent_by_ip)[:1000]:
+                sent_by_ip.pop(k, None)
+        return len(recent) < SEND_LIMIT
+
+    def note_sent(ip: str) -> None:
+        import time as _time
+
+        sent_by_ip.setdefault(ip, []).append(_time.monotonic())
+
+    class Asker:
+        """Who a request page is for: a viewer link, or a widget (no password, busy-only)."""
+
+        def __init__(
+            self, audience_id: str, audience: AudienceCfg, base: str, key: str, person=None, person_id=None
+        ):
+            self.audience_id, self.audience, self.base, self.key = audience_id, audience, base, key
+            self.person, self.person_id = person, person_id
+
+    def widget_audience(wslug: str) -> tuple[str, AudienceCfg] | None:
+        found = None
+        for aid, aud in g.cfg.audiences.items():
+            w = aud.widget
+            if w.enabled and w.slug and hmac.compare_digest(w.slug.encode(), wslug.encode()):
+                found = (aid, aud)
+        return found
+
+    def owner_name() -> str:
+        return (g.cfg.owner_name or "").strip() or "the owner"
+
+    def panel_url() -> str:
+        n = g.cfg.notify
+        if n.panel_url:
+            return n.panel_url.rstrip("/")
+        base = g.cfg.server.base_url.rstrip("/")
+        return (
+            f"{base}:8443"
+            if base.startswith("https://") and base.count(":") == 1
+            else "http://127.0.0.1:8001"
+        )
+
+    def status_link(r: MeetingRequest) -> str:
+        return f"{g.cfg.server.base_url.rstrip('/')}/req/{r.token}"
+
+    def when_text(start: datetime, end: datetime, tz: ZoneInfo) -> str:
+        s, e = start.astimezone(tz), end.astimezone(tz)
+        return f"{fmt_day(s.date())}, {fmt_time(s)} – {fmt_time(e)} · {zone_label(tz, s)}"
+
+    def request_zone(request: Request, asker: Asker, tz_param: str = "") -> ZoneInfo:
+        return (
+            valid_zone(tz_param)
+            or valid_zone(request.cookies.get(TZ_COOKIE))
+            or valid_zone(asker.audience.timezone)
+            or g.cfg.tz
+        )
+
+    def request_page(
+        request: Request, asker: Asker, tz: ZoneInfo, minutes: int | None, ctx: dict, status: int = 200
+    ):
+        aud = asker.audience
+        r = aud.requests
+        minutes = minutes if minutes in r.lengths else r.lengths[0]
+        now = g.now()
+        days: list[tuple[date, list]] = []
+        if r.slots:
+            slots = open_slots(g, aud, minutes, now, reqs.holds())
+            for sl in slots:
+                d = sl.start.astimezone(tz).date()
+                if not days or days[-1][0] != d:
+                    days.append((d, []))
+                days[-1][1].append(sl)
+        earliest, latest = request_range(g.cfg, aud, now)
+        wanted = parse_day(request.query_params.get("day", "") or str(ctx.get("values", {}).get("day", "")))
+        chosen = next((d for d, _ in days if d == wanted), days[0][0] if days else None)
+        base_ctx = {
+            "aud": aud,
+            "base": asker.base,
+            "embedded": asker.key.startswith("w:"),
+            "person": asker.person.name if asker.person else None,
+            "owner_first": (g.cfg.owner_name or "").strip() or None,
+            "owner_possessive": g.cfg.owner_possessive,
+            "r": r,
+            "minutes": minutes,
+            "days": days,
+            "chosen": chosen,
+            "chosen_slots": next((sl for d, sl in days if d == chosen), []),
+            "tz": tz,
+            "tz_label": zone_label(tz),
+            "ft": form_token(asker.key),
+            "min_day": earliest.astimezone(tz).date().isoformat(),
+            "max_day": (latest - timedelta(seconds=1)).astimezone(tz).date().isoformat(),
+            "error": None,
+            "values": {},
+            "back": asker.base if not asker.key.startswith("w:") else None,
+            "zones": sorted({*COMMON_ZONES, g.cfg.timezone, tz.key}),
+        }
+        base_ctx.update(ctx)
+        return templates.TemplateResponse(request, "request.html", base_ctx, status_code=status)
+
+    async def submit_request(request: Request, asker: Asker) -> Response:
+        aud = asker.audience
+        r = aud.requests
+        form = await request.form()
+        tz = request_zone(request, asker, str(form.get("tz", "")))
+        ip = client_ip(request)
+        values = {
+            k: str(form.get(k, ""))[:1000]
+            for k in ("name", "email", "note", "date", "time", "start", "mode", "day")
+        }
+        try:
+            minutes = int(str(form.get("len", "")))
+        except ValueError:
+            minutes = r.lengths[0]
+
+        def again(msg: str, status: int = 400) -> Response:
+            return request_page(request, asker, tz, minutes, {"error": msg, "values": values}, status)
+
+        if str(form.get("website", "")):  # a field people never see; bots fill it in
+            return again("Something went wrong. Please try again.")
+        if not form_token_ok(str(form.get("ft", "")), asker.key):
+            return again("This page was open too long. Please pick a time again.")
+        name = " ".join(values["name"].split())[:80]
+        email = values["email"].strip()[:120]
+        note = values["note"].strip()[:1000]
+        if not name:
+            return again("Please add your name.")
+        if not re.fullmatch(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}", email):
+            return again("Please add an email address so you can hear back.")
+        if minutes not in r.lengths:
+            return again("Please pick one of the offered meeting lengths.")
+        now = g.now()
+        mode = values["mode"]
+        if mode == "suggest" and r.suggest:
+            d, t = parse_day(values["date"]), values["time"]
+            if d is None or not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", t):
+                return again("Please pick a day and a time to suggest.")
+            hh, mm = (int(x) for x in t.split(":"))
+            start = datetime(d.year, d.month, d.day, hh, mm, tzinfo=tz)
+            end = start + timedelta(minutes=minutes)
+            earliest, latest = request_range(g.cfg, aud, now)
+            if start < earliest:
+                return again("That time is too soon. Please suggest a later one.")
+            if end > latest:
+                return again("That's further ahead than you can ask for here.")
+            kind = "suggested"
+        elif mode == "slot" and r.slots:
+            try:
+                start = datetime.fromisoformat(values["start"])
+            except ValueError:
+                return again("Please pick one of the open times.")
+            if start.tzinfo is None:
+                return again("Please pick one of the open times.")
+            end = start + timedelta(minutes=minutes)
+            why = fits_rules(g.cfg, aud, start, end, now)
+            if why:
+                return again(why)
+            if not is_free(busy_times(g, start, end, reqs.holds()), start, end):
+                return again("Sorry, that time was just taken. Please pick another.", 409)
+            kind = "slot"
+        else:
+            return again("Please pick a time.")
+        if not send_allowed(ip):
+            return again("You've sent several requests already. Please try again later.", 429)
+        if reqs.open_from(asker.key) >= MAX_PENDING_PER_VIEWER:
+            return again(
+                f"There are already {MAX_PENDING_PER_VIEWER} requests from this link waiting for an answer.",
+                429,
+            )
+        try:
+            item = reqs.add(
+                audience=asker.audience_id,
+                person=asker.person_id,
+                viewer=asker.key,
+                name=name,
+                email=email,
+                note=note,
+                start=start.isoformat(),
+                end=end.isoformat(),
+                kind=kind,
+            )
+        except OverflowError:
+            return again("Too many requests are waiting right now. Please try again later.", 429)
+        note_sent(ip)
+        own = g.cfg.tz
+        who = f"{name}" + (
+            f" ({asker.person.name}'s link)" if asker.person and asker.person.name != name else ""
+        )
+        body = f"{who} · {aud.title}\n{when_text(start, end, own)}" + (
+            " (suggested time)" if kind == "suggested" else ""
+        )
+        if note:
+            body += f"\n“{note[:300]}”"
+        notes.owner(Note(title="New meeting request", body=body, url=f"{panel_url()}/requests#r-{item.id}"))
+        notes.requester(
+            email,
+            f"Your meeting request to {owner_name()}",
+            f"Hi {name},\n\nYour request to meet {owner_name()} was sent:\n{when_text(start, end, tz)}\n\n"
+            "You'll get an email when they answer. You can also check or cancel it here:\n"
+            f"{status_link(item)}\n",
+        )
+        resp = RedirectResponse(f"/req/{item.token}?sent=1", status_code=303)
+        return resp
+
+    def status_page(
+        request: Request, item: MeetingRequest, tz: ZoneInfo, error: str | None = None, status: int = 200
+    ):
+        aud = g.cfg.audiences.get(item.audience)
+        ctx = {
+            "item": item,
+            "aud": aud,
+            "tz": tz,
+            "when": when_text(item.start_dt, item.end_dt, tz),
+            "counter": when_text(item.counter_start_dt, item.counter_end_dt, tz)
+            if item.counter_start_dt and item.counter_end_dt
+            else None,
+            "owner_first": (g.cfg.owner_name or "").strip() or None,
+            "owner_possessive": g.cfg.owner_possessive,
+            "ft": form_token(f"req:{item.id}"),
+            "sent": request.query_params.get("sent") == "1",
+            "emailed": notes.can_email_requesters(),
+            "error": error,
+            "past": item.end_dt < g.now(),
+        }
+        return templates.TemplateResponse(request, "request_status.html", ctx, status_code=status)
+
+    @app.get("/req/{token}", response_class=HTMLResponse)
+    def request_status(request: Request, token: str):
+        item = reqs.by_token(token)
+        if item is None:
+            return not_found(request)
+        aud = g.cfg.audiences.get(item.audience)
+        tz = (
+            valid_zone(request.cookies.get(TZ_COOKIE))
+            or valid_zone(aud.timezone if aud else None)
+            or g.cfg.tz
+        )
+        return status_page(request, item, tz)
+
+    @app.post("/req/{token}", response_class=HTMLResponse)
+    def request_status_action(request: Request, token: str, action: str = Form(""), ft: str = Form("")):
+        item = reqs.by_token(token)
+        if item is None:
+            return not_found(request)
+        tz = g.cfg.tz
+        if not form_token_ok(ft, f"req:{item.id}"):
+            return status_page(request, item, tz, "This page was open too long. Please try again.", 400)
+        who = item.name
+        if action == "cancel" and item.status in ("pending", "countered", "accepted"):
+            reqs.change(item.id, "cancelled", "by requester")
+            notes.owner(
+                Note(
+                    title="Meeting request cancelled",
+                    body=f"{who} cancelled: {when_text(item.start_dt, item.end_dt, g.cfg.tz)}",
+                    url=f"{panel_url()}/requests",
+                    tags="x",
+                )
+            )
+        elif (
+            action == "accept_counter"
+            and item.status == "countered"
+            and item.counter_start
+            and item.counter_end
+        ):
+            reqs.change(
+                item.id,
+                "accepted",
+                "new time accepted",
+                start=item.counter_start,
+                end=item.counter_end,
+                counter_start=None,
+                counter_end=None,
+            )
+            notes.owner(
+                Note(
+                    title="New time accepted",
+                    body=f"{who} accepted {when_text(item.start_dt, item.end_dt, g.cfg.tz)}. "
+                    "Add it to your calendar.",
+                    url=f"{panel_url()}/requests#r-{item.id}",
+                    tags="white_check_mark",
+                )
+            )
+        elif action == "decline_counter" and item.status == "countered":
+            reqs.change(item.id, "cancelled", "new time declined", counter_start=None, counter_end=None)
+            notes.owner(
+                Note(
+                    title="Proposed time declined",
+                    body=f"{who} declined the time you proposed.",
+                    url=f"{panel_url()}/requests",
+                    tags="x",
+                )
+            )
+        return RedirectResponse(f"/req/{token}", status_code=303)
+
+    @app.get("/req/{token}/invite.ics")
+    def request_invite(request: Request, token: str):
+        item = reqs.by_token(token)
+        if item is None or item.status != "accepted":
+            return not_found(request)
+        body = invite_ics(
+            f"glimpse-{item.id}@glimpse",
+            item.start_dt,
+            item.end_dt,
+            f"Meeting with {owner_name()}",
+            item.note,
+        )
+        return Response(
+            body,
+            media_type="text/calendar; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="meeting.ics"'},
+        )
+
+    def widget_headers(aud: AudienceCfg) -> dict[str, str]:
+        sites = " ".join(aud.widget.sites) if aud.widget.sites else "*"
+        csp = SECURITY_HEADERS["Content-Security-Policy"].replace(
+            "frame-ancestors 'none'", f"frame-ancestors {sites}"
+        )
+        return {"Content-Security-Policy": csp, "Cache-Control": "max-age=60"}
+
+    @app.get("/w/{wslug}", response_class=HTMLResponse)
+    def widget(request: Request, wslug: str, tz: str = ""):
+        found = widget_audience(wslug)
+        if found is None:
+            return not_found(request)
+        aid, aud = found
+        zone = valid_zone(tz) or valid_zone(aud.timezone) or g.cfg.tz
+        today = g.today_in(zone)
+        hours = aud.request_hours if aud.requests.enabled else (aud.hours or None)
+        days = busy_blocks_for_days(g, today, aud.widget.days, hours, zone, reqs.holds())
+        if hours:
+            days = [(d, parts) for d, parts in days if d.weekday() in hours.weekday_numbers] or days
+        h0, h1 = (hours.start, hours.end) if hours else (time(8, 0), time(18, 0))
+        ctx = {
+            "aud": aud,
+            "days": days,
+            "today": today,
+            "hours_label": f"{fmt_time(h0, True)}–{fmt_time(h1, True)}",
+            "tz_label": zone_label(zone),
+            "tz": zone,
+            "owner_possessive": g.cfg.owner_possessive,
+            "request_url": f"/w/{wslug}/request?tz={zone.key}" if aud.requests.enabled else None,
+            "freshness": freshness(),
+            "self_url": f"/w/{wslug}",
+            "has_tz": bool(tz),
+            "repo_url": f"https://github.com/{g.cfg.updates.repo}",
+        }
+        resp = templates.TemplateResponse(request, "widget.html", ctx)
+        for k, v in widget_headers(aud).items():
+            resp.headers[k] = v
+        return resp
+
+    @app.get("/w/{wslug}/request", response_class=HTMLResponse)
+    def widget_request(request: Request, wslug: str, tz: str = "", len: int = 0):  # noqa: A002
+        found = widget_audience(wslug)
+        if found is None or not found[1].requests.enabled:
+            return not_found(request)
+        aid, aud = found
+        asker = Asker(aid, aud, f"/w/{wslug}", f"w:{aid}")
+        return request_page(request, asker, request_zone(request, asker, tz), len, {})
+
+    @app.post("/w/{wslug}/request", response_class=HTMLResponse)
+    async def widget_request_send(request: Request, wslug: str):
+        found = widget_audience(wslug)
+        if found is None or not found[1].requests.enabled:
+            return not_found(request)
+        aid, aud = found
+        return await submit_request(request, Asker(aid, aud, f"/w/{wslug}", f"w:{aid}"))
+
+    def viewer_asker(request: Request, kind: str, slug: str) -> Asker | Response:
+        v = find(request, kind, slug)
+        if not isinstance(v, Viewer):
+            return v
+        if not v.audience.requests.enabled:
+            return not_found(request)
+        if not authed(request, v):
+            return to_login(v, "request")
+        return Asker(v.audience_id, v.audience, v.base, v.key, v.person, v.person_id)
+
+    @app.get("/{kind}/{slug}/request", response_class=HTMLResponse)
+    def viewer_request(request: Request, kind: str, slug: str, tz: str = "", len: int = 0):  # noqa: A002
+        asker = viewer_asker(request, kind, slug)
+        if not isinstance(asker, Asker):
+            return asker
+        return request_page(request, asker, request_zone(request, asker, tz), len, {})
+
+    @app.post("/{kind}/{slug}/request", response_class=HTMLResponse)
+    async def viewer_request_send(request: Request, kind: str, slug: str):
+        asker = viewer_asker(request, kind, slug)
+        if not isinstance(asker, Asker):
+            return asker
+        return await submit_request(request, asker)
 
     @app.get("/{kind}/{slug}")
     def home(request: Request, kind: str, slug: str, tz: str = ""):
@@ -343,6 +787,7 @@ def create_app(
             "excel_url": f"{v.base}/excel/{start}" if aud.allow_excel else None,
             "excel_label": "Download this week (Excel)",
             "hour_px": 44,
+            **g.school.viewer_context(start, start + timedelta(days=7), start),
         }
         return templates.TemplateResponse(request, "week.html", ctx)
 
@@ -372,6 +817,7 @@ def create_app(
             "excel_label": "Download this week (Excel)",
             "day_note": note,
             "hour_px": 52,
+            **g.school.viewer_context(d, d + timedelta(days=1), d),
         }
         return templates.TemplateResponse(request, "week.html", ctx)
 
@@ -404,7 +850,9 @@ def create_app(
         }
         if kind == "month":
             view = build_month(c, aud, first, events, today, (lo, hi), tz)
+            school = g.school.viewer_context(first - timedelta(days=7), end + timedelta(days=7), first)
             ctx |= {
+                "school_days": school["school_days"],
                 "view": view,
                 "range_label": view.label,
                 "excel_url": f"{v.base}/excel-month/{first}" if aud.allow_excel else None,

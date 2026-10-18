@@ -1,0 +1,100 @@
+{% extends "admin/base.html" %}
+{% block title %}Notifications · Glimpse settings{% endblock %}
+{% macro last_result(ch) %}
+  {% if tested and tested[0] == ch %}
+  <p class="{{ 'flash' if tested[1].ok else 'error' }}" role="status">{{ 'Test sent: ' ~ tested[1].detail if tested[1].ok else 'Test failed: ' ~ tested[1].detail }}</p>
+  {% elif last.get(ch) %}
+  <p class="hint">Last message {{ 'sent' if last[ch].ok else 'failed' }}{% if not last[ch].ok %}: {{ last[ch].detail }}{% endif %}.</p>
+  {% endif %}
+{% endmacro %}
+{% macro test_button(ch, ready) %}
+  {% if ready %}
+  <form method="post" action="/notifications/test/{{ ch }}" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="secondary small">Send a test</button>
+  </form>
+  {% endif %}
+{% endmacro %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Notifications</h1>
+    <p class="muted">How Glimpse tells you about new meeting requests. Switch on as many as you like; each works on its own.</p>
+  </div>
+</header>
+{% set n = cfg.notify %}
+
+<form method="post" action="/notifications" class="form" id="notify-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="rev" value="{{ rev }}">
+
+  <section class="panel">
+    <div class="panelhead"><h2>Phone (ntfy)</h2>{% if 'ntfy' in enabled %}<span class="status ok">On</span>{% else %}<span class="status">Off</span>{% endif %}</div>
+    <p class="muted">Free push notifications. Install the <strong>ntfy</strong> app (iPhone or Android), tap +, and subscribe to the topic below. Tapping a notification opens your Requests page.</p>
+    <label class="check"><input type="checkbox" name="ntfy_enabled" {% if n.ntfy.enabled %}checked{% endif %}> Send to my phone</label>
+    <div class="grid2">
+      <label>Topic
+        <input type="text" name="ntfy_topic" value="{{ '' if n.ntfy.topic else suggest_topic }}" placeholder="{{ 'Saved (type to change)' if n.ntfy.topic else '' }}" maxlength="64" pattern="[A-Za-z0-9_-]+" spellcheck="false" autocomplete="off">
+        <span class="hint">{% if not n.ntfy.topic %}A random one is filled in for you. {% endif %}Anyone who knows the topic can read the messages, so keep it long and unguessable.</span>
+      </label>
+      <label>Server
+        <input type="url" name="ntfy_server" value="{{ n.ntfy.server }}" spellcheck="false">
+        <span class="hint">Leave as ntfy.sh unless you run your own.</span>
+      </label>
+    </div>
+    {% if n.ntfy.topic %}<p class="hint">In the ntfy app, subscribe to: <code>{{ n.ntfy.topic }}</code></p>{% endif %}
+    <details class="help"><summary>Private ntfy server</summary>
+      <label>Access token <input type="password" name="ntfy_token" value="" placeholder="{{ 'Saved' if n.ntfy.token else '' }}" autocomplete="off"></label>
+      {% if n.ntfy.token %}<label class="check"><input type="checkbox" name="ntfy_token_clear"> Remove the saved token</label>{% endif %}
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panelhead"><h2>Email</h2>{% if 'email' in enabled %}<span class="status ok">On</span>{% else %}<span class="status">Off</span>{% endif %}</div>
+    <p class="muted">Sends from an email account you own. With Gmail, turn on 2-Step Verification and create an <strong>app password</strong> (Google Account &rsaquo; Security &rsaquo; App passwords); use smtp.gmail.com, port 587. Proton Mail needs its paid Bridge.</p>
+    <label class="check"><input type="checkbox" name="email_enabled" {% if n.email.enabled %}checked{% endif %}> Email me</label>
+    <div class="grid2">
+      <label>Mail server (SMTP) <input type="text" name="smtp_host" value="{{ n.email.smtp_host or '' }}" placeholder="smtp.gmail.com" spellcheck="false"></label>
+      <label>Port <input type="number" name="smtp_port" value="{{ n.email.smtp_port }}" min="1" max="65535"></label>
+      <label>Security
+        <select name="security">
+          <option value="starttls" {% if n.email.security == 'starttls' %}selected{% endif %}>STARTTLS (port 587)</option>
+          <option value="ssl" {% if n.email.security == 'ssl' %}selected{% endif %}>SSL/TLS (port 465)</option>
+          <option value="none" {% if n.email.security == 'none' %}selected{% endif %}>None (local relay only)</option>
+        </select>
+      </label>
+      <label>Username <input type="text" name="username" value="{{ n.email.username or '' }}" placeholder="you@gmail.com" autocomplete="off" spellcheck="false"></label>
+      <label>Password <input type="password" name="password" value="" placeholder="{{ 'Saved (type to change)' if n.email.password else 'App password' }}" autocomplete="new-password"></label>
+      <label><span>Send from <span class="muted">(optional)</span></span> <input type="email" name="from_addr" value="{{ n.email.from_addr or '' }}" placeholder="Same as username"></label>
+      <label><span>Send my notifications to <span class="muted">(optional)</span></span> <input type="email" name="to_addr" value="{{ n.email.to_addr or '' }}" placeholder="Same as the sender"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="notify_requester" {% if n.email.notify_requester %}checked{% endif %}> Also email people about their own requests <span class="muted">(a confirmation, then your answer with a calendar file)</span></label>
+  </section>
+
+  <section class="panel">
+    <div class="panelhead"><h2>Discord</h2>{% if 'discord' in enabled %}<span class="status ok">On</span>{% else %}<span class="status">Off</span>{% endif %}</div>
+    <p class="muted">Posts in a channel of a server you manage: Channel settings &rsaquo; Integrations &rsaquo; Webhooks &rsaquo; New Webhook &rsaquo; Copy Webhook URL. A private channel just for you works well.</p>
+    <label class="check"><input type="checkbox" name="discord_enabled" {% if n.discord.enabled %}checked{% endif %}> Post to Discord</label>
+    <label>Webhook link <input type="password" name="webhook_url" value="" placeholder="{{ 'Saved (paste to change)' if n.discord.webhook_url else 'https://discord.com/api/webhooks/...' }}" autocomplete="off" spellcheck="false"></label>
+  </section>
+
+  <section class="panel">
+    <h2>Link in notifications</h2>
+    <label><span>Settings panel address <span class="muted">(optional)</span></span>
+      <input type="url" name="panel_url" value="{{ n.panel_url or '' }}" placeholder="https://your-pc.your-tailnet.ts.net:8443" spellcheck="false">
+      <span class="hint">Where tapping a notification takes you. Left empty, Glimpse uses your Tailscale address with port 8443. Your phone needs Tailscale on to open it.</span>
+    </label>
+  </section>
+  <div class="actions"><button type="submit">Save notifications</button></div>
+</form>
+
+<section class="panel">
+  <h2>Test</h2>
+  <p class="muted">Save first, then send a test to each channel that's on.</p>
+  <div class="test-grid">
+    <div><strong>Phone</strong>{{ test_button('ntfy', 'ntfy' in enabled) }}{{ last_result('ntfy') }}{% if 'ntfy' not in enabled %}<p class="hint">Switch it on and add a topic.</p>{% endif %}</div>
+    <div><strong>Email</strong>{{ test_button('email', 'email' in enabled) }}{{ last_result('email') }}{% if 'email' not in enabled %}<p class="hint">Switch it on and add a mail server.</p>{% endif %}</div>
+    <div><strong>Discord</strong>{{ test_button('discord', 'discord' in enabled) }}{{ last_result('discord') }}{% if 'discord' not in enabled %}<p class="hint">Switch it on and add a webhook link.</p>{% endif %}</div>
+  </div>
+</section>
+{% endblock %}

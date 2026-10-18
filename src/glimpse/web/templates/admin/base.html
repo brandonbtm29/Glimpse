@@ -29,7 +29,10 @@
       {% endfor %}
       <a href="/people" {% if nav in ('people', 'person') %}aria-current="page"{% endif %}>People</a>
       <a href="/rules" {% if nav == 'rules' %}aria-current="page"{% endif %}>Privacy rules</a>
+      <a href="/requests" {% if nav == 'requests' %}aria-current="page"{% endif %}>Requests{% if pending_requests %} <span class="count">{{ pending_requests }}</span>{% endif %}</a>
+      <a href="/school" {% if nav == 'school' %}aria-current="page"{% endif %}>School</a>
       <a href="/preview" {% if nav == 'preview' %}aria-current="page"{% endif %}>Preview</a>
+      <a href="/notifications" {% if nav == 'notifications' %}aria-current="page"{% endif %}>Notifications</a>
       <a href="/settings" {% if nav == 'settings' %}aria-current="page"{% endif %}>Settings</a>
       <a href="/setup" {% if nav == 'setup' %}aria-current="page"{% endif %}>Setup</a>
     </nav>

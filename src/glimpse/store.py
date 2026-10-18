@@ -135,6 +135,10 @@ class Draft:
         for grp in (self.raw.get("groups") or {}).values():
             if isinstance(grp, dict) and isinstance(grp.get("calendars"), list):
                 grp["calendars"] = [c for c in grp["calendars"] if c != cid]
+        for sect, key in (("availability", "ignore_calendars"), ("school", "class_calendars")):
+            node2 = self.raw.get(sect)
+            if isinstance(node2, dict) and isinstance(node2.get(key), list):
+                node2[key] = [c for c in node2[key] if c != cid]
         for rule in self.raw.get("rules") or []:
             if isinstance(rule, dict) and isinstance(rule.get("calendars"), list) and rule["calendars"]:
                 rule["calendars"] = [c for c in rule["calendars"] if c != cid]
@@ -221,6 +225,8 @@ class Draft:
             return
         self.drop_secret(node, "slug")
         self.drop_secret(node, "password_hash")
+        if isinstance(node.get("widget"), dict):
+            self.drop_secret(node["widget"], "slug")
         for pid, person in list((self.raw.get("people") or {}).items()):
             if isinstance(person, dict) and person.get("audience") == aid:
                 self.remove_person(pid)
@@ -269,6 +275,15 @@ class Draft:
     def rotate_slug(self, aid: str) -> None:
         node = self.audiences[aid]
         self.set_secret(node, "slug", new_slug(), _env_name("AUD", aid, "SLUG"))
+
+    def widget(self, aid: str) -> dict[str, Any]:
+        node = self.audiences[aid]
+        if not isinstance(node.get("widget"), dict):
+            node["widget"] = {}
+        return node["widget"]
+
+    def rotate_widget_slug(self, aid: str) -> None:
+        self.set_secret(self.widget(aid), "slug", new_slug(), _env_name("AUD", aid, "WIDGET_SLUG"))
 
     def set_audience_password(self, aid: str, password_hash: str | None) -> None:
         node = self.audiences[aid]

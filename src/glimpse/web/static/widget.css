@@ -1,0 +1,29 @@
+/* The embeddable free/busy widget. Light and dark follow the visitor's device. */
+:root {
+  --bg: #ffffff; --ink: #1d2330; --muted: #5d6676; --line: #e3e6eb; --busy: #8a919b;
+  --free: #eaf6ef; --accent: #3b6fd8; color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1a1e26; --ink: #e8ebf1; --muted: #a3abb9; --line: #2b313c; --busy: #8f97a3; --free: #1d2a24; --accent: #7ea6ff; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.w { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 100vh; }
+.w-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.w-title { font-weight: 650; font-size: 14px; }
+.w-key { color: var(--muted); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.w-key i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-left: 6px; }
+.w-busy-key { background: var(--busy); }
+.w-free-key { background: var(--free); border: 1px solid var(--line); }
+.w-grid { flex: 1; display: grid; grid-template-columns: repeat(var(--days), minmax(0, 1fr)); gap: 4px; min-height: 160px; }
+.w-day { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.w-dh { text-align: center; color: var(--muted); font-size: 11px; line-height: 1.1; }
+.w-dh b { display: block; color: var(--ink); font-size: 15px; }
+.w-day.today .w-dh b { color: var(--accent); }
+.w-col { position: relative; flex: 1; background: var(--free); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.w-b { position: absolute; left: 0; right: 0; background: var(--busy); border-radius: 2px; }
+.w-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.w-btn { background: var(--accent); color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 8px; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .w-btn { color: #0d1220; } }
+.w-brand { margin: 0; font-size: 11px; color: var(--muted); text-align: right; }
+.w-brand a { color: var(--muted); }

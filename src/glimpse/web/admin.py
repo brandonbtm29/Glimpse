@@ -16,7 +16,7 @@ import re
 import secrets
 import time
 import zoneinfo
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -33,10 +33,12 @@ from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
 from .. import __version__, autostart, tailscale, updates
+from ..availability import busy_times, is_free
 from ..config import (
     EMOJI_MARKERS,
     MARKERS,
     MAX_WEEKS,
+    REQUEST_LENGTHS,
     VIEW_ORDER,
     WEEKDAYS,
     AppConfig,
@@ -49,9 +51,12 @@ from ..config import (
 )
 from ..core import add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..events import parse_events
+from ..notify import CHANNELS, Note, invite_ics
 from ..policy import rule_matches
 from ..render.periods import build_heat, build_month
 from ..render.week import PALETTE_SIZE, build_week, fmt_day, fmt_range, fmt_time
+from ..requests_store import MeetingRequest
+from ..school import read_feed
 from ..sources import USER_AGENT, normalize_url
 from ..store import Draft, _env_name, finish_setup
 from .app import COMMON_ZONES, VIEW_LABELS
@@ -121,6 +126,12 @@ FLASH = {
     "checked": "Checked GitHub for updates.",
     "recolored": "Every calendar now has its own colour.",
     "rules_suggested": "Suggested rules added. Turn off or edit any that don't fit.",
+    "req_accepted": "Accepted. Use \u201cAdd to my calendar\u201d so it shows up on your calendars too.",
+    "req_declined": "Declined.",
+    "req_countered": "New time sent. You'll hear back when they answer.",
+    "req_removed": "Request removed from the list.",
+    "req_gone": "That request no longer exists.",
+    "thanks": "Thanks for using Glimpse!",
 }
 VIEW_HELP = {
     "day": "Day: one day, hour by hour (handy on phones)",
@@ -347,6 +358,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "reload_error": rt.reload_error,
             "update": rt.updates.last if cfg().updates.check and rt.updates.last.update_available else None,
             "rev": store.revision(),
+            "pending_requests": rt.requests.pending_count(),
         }
         base.update(ctx)
         return templates.TemplateResponse(request, name, base, status_code=status)
@@ -375,6 +387,21 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         new_cfg = await run_in_threadpool(store.update, mutate)
         await run_in_threadpool(rt.apply, new_cfg)
         return new_cfg
+
+    def widget_link(aud: AudienceCfg) -> str | None:
+        if not aud.widget.slug:
+            return None
+        return f"{cfg().server.base_url.rstrip('/')}/w/{aud.widget.slug}"
+
+    def embed_code(aud: AudienceCfg) -> str | None:
+        link = widget_link(aud)
+        if not link:
+            return None
+        who = cfg().owner_possessive or "My"
+        return (
+            f'<iframe src="{link}" title="{who} availability" loading="lazy" '
+            'style="width:100%;max-width:640px;height:340px;border:0;border-radius:10px"></iframe>'
+        )
 
     def public_link(aud: AudienceCfg) -> str:
         return f"{cfg().server.base_url.rstrip('/')}/a/{aud.slug}"
@@ -742,6 +769,9 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "local_base": local_base,
                 "steps": steps,
                 "steps_done": sum(1 for st in steps if st["done"]),
+                "support_note": all(st["done"] for st in steps)
+                and rt.seen.get("ui:support-note-dismissed") is None,
+                "support_url": f"https://github.com/{c.updates.repo}#support",
             },
             sess,
         )
@@ -1167,6 +1197,10 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "seen": ago(rt.seen.get(f"audience:{aid}")),
                 "view_help": VIEW_HELP,
                 "zones": sorted({*COMMON_ZONES, cfg().timezone, *([aud.timezone] if aud.timezone else [])}),
+                "lengths": REQUEST_LENGTHS,
+                "widget_url": widget_link(aud),
+                "embed": embed_code(aud),
+                "channels": rt.notifier.enabled(),
                 "error": error,
             },
             sess,
@@ -1729,6 +1763,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             ov["honor_private_flag"] = form.get("honor_private_flag") == "on"
             ov["merge_duplicates"] = form.get("merge_duplicates") == "on"
             d.section("updates")["check"] = form.get("check_updates") == "on"
+            r["support_link"] = form.get("support_link") == "on"
             owner = str(form.get("owner_name", "")).strip()[:40]
             if owner:
                 r["owner_name"] = owner
@@ -1765,5 +1800,598 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         resp = done("/settings", "admin_pw")
         set_session(resp, sess.get("c"))  # keep this browser signed in
         return resp
+
+    # -- meeting requests ----------------------------------------------------------------------
+
+    def req_when(r: MeetingRequest, counter: bool = False) -> str:
+        tz = cfg().tz
+        s, e = (r.counter_start_dt, r.counter_end_dt) if counter else (r.start_dt, r.end_dt)
+        if s is None or e is None:
+            return ""
+        s, e = s.astimezone(tz), e.astimezone(tz)
+        return f"{fmt_day(s.date())}, {fmt_time(s)} – {fmt_time(e)}"
+
+    def req_rows() -> tuple[list[dict], list[dict]]:
+        c = cfg()
+        items = rt.requests.all()
+        open_rows, done_rows = [], []
+        now = rt.glimpse.now()
+        for r in items:
+            others = [h for x in items if x.id != r.id for h in x.holds()]
+            s, e = (
+                (r.counter_start_dt, r.counter_end_dt) if r.status == "countered" else (r.start_dt, r.end_dt)
+            )
+            free = is_free(busy_times(rt.glimpse, s, e, others), s, e) if s and e else True
+            aud = c.audiences.get(r.audience)
+            person = c.people.get(r.person) if r.person else None
+            row = {
+                "r": r,
+                "when": req_when(r),
+                "counter": req_when(r, True) if r.counter_start else None,
+                "aud": aud.title if aud else "(removed audience)",
+                "via": person.name
+                if person
+                else ("website widget" if r.viewer.startswith("w:") else "shared link"),
+                "free": free,
+                "past": r.end_dt < now,
+                "ago": ago(r.created_dt),
+            }
+            (open_rows if r.open else done_rows).append(row)
+        open_rows.sort(key=lambda x: x["r"].start)
+        return open_rows, done_rows[:30]
+
+    def requests_page(request, sess, error=None, status=200):
+        open_rows, done_rows = req_rows()
+        c = cfg()
+        return page(
+            request,
+            "admin/requests.html",
+            {
+                "open_rows": open_rows,
+                "done_rows": done_rows,
+                "feeds": feed_rows(),
+                "channels": rt.notifier.enabled(),
+                "requesting": [(aid, a) for aid, a in c.audiences.items() if a.requests.enabled],
+                "can_email": rt.notifier.can_email_requesters(),
+                "error": error,
+                "lengths": REQUEST_LENGTHS,
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/requests", response_class=HTMLResponse)
+    def requests_list(request: Request):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        return requests_page(request, sess)
+
+    def owner_first() -> str:
+        return (cfg().owner_name or "").strip() or "The person you asked"
+
+    def requester_status_link(r: MeetingRequest) -> str:
+        return f"{cfg().server.base_url.rstrip('/')}/req/{r.token}"
+
+    def requester_when(r: MeetingRequest, counter: bool = False) -> str:
+        aud = cfg().audiences.get(r.audience)
+        tz = zoneinfo.ZoneInfo(aud.timezone) if aud and aud.timezone else cfg().tz
+        s, e = (r.counter_start_dt, r.counter_end_dt) if counter else (r.start_dt, r.end_dt)
+        s, e = s.astimezone(tz), e.astimezone(tz)
+        return f"{fmt_day(s.date())}, {fmt_time(s)} – {fmt_time(e)} ({s.tzname()})"
+
+    def owner_invite(r: MeetingRequest) -> str:
+        desc = f"Requested by {r.name} <{r.email}> through Glimpse."
+        if r.note:
+            desc += f"\n\n{r.note}"
+        return invite_ics(f"glimpse-{r.id}@glimpse", r.start_dt, r.end_dt, f"Meeting with {r.name}", desc)
+
+    @app.post("/requests/{rid}/answer", response_class=HTMLResponse)
+    async def request_answer(request: Request, rid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        r = rt.requests.get(rid)
+        if r is None:
+            return done("/requests", "req_gone")
+        action = str(form.get("action", ""))
+        reply = str(form.get("reply", "")).strip()[:1000]
+        sign = f"\n\n{reply}\n" if reply else "\n"
+        link = requester_status_link(r)
+        if action == "accept":
+            rt.requests.change(rid, "accepted", reply=reply)
+            invite = invite_ics(
+                f"glimpse-{r.id}@glimpse", r.start_dt, r.end_dt, f"Meeting with {owner_first()}", r.note
+            )
+            rt.notifier.requester(
+                r.email,
+                f"Confirmed: meeting with {owner_first()}",
+                f"Hi {r.name},\n\n{owner_first()} accepted your meeting request:\n{requester_when(r)}\n"
+                f"{sign}\nThe attached file adds it to your calendar. Details: {link}\n",
+                ics=invite,
+            )
+            return done(f"/requests#r-{rid}", "req_accepted")
+        if action == "decline":
+            rt.requests.change(rid, "declined", reply=reply)
+            rt.notifier.requester(
+                r.email,
+                f"About your meeting request to {owner_first()}",
+                f"Hi {r.name},\n\n{owner_first()} can't meet at {requester_when(r)}.{sign}\n"
+                f"Details: {link}\n",
+            )
+            return done("/requests", "req_declined")
+        if action == "counter":
+            day, t = str(form.get("date", "")), str(form.get("time", ""))
+            try:
+                minutes = int(str(form.get("len", r.minutes)))
+            except ValueError:
+                minutes = r.minutes
+            if not (_DATE.match(day) and _TIME.match(t)) or not 5 <= minutes <= 480:
+                return requests_page(request, sess, "Pick a day and a time to propose.", 400)
+            hh, mm = (int(x) for x in t.split(":"))
+            d = date.fromisoformat(day)
+            start = datetime(d.year, d.month, d.day, hh, mm, tzinfo=cfg().tz)
+            end = start + timedelta(minutes=minutes)
+            rt.requests.change(
+                rid, "countered", reply=reply, counter_start=start.isoformat(), counter_end=end.isoformat()
+            )
+            rt.notifier.requester(
+                r.email,
+                f"{owner_first()} suggested another time",
+                f"Hi {r.name},\n\n{owner_first()} can't do {requester_when(r)}, but suggested:\n"
+                f"{requester_when(rt.requests.get(rid), counter=True)}{sign}\n"
+                f"Let them know if that works here: {link}\n",
+            )
+            return done(f"/requests#r-{rid}", "req_countered")
+        return done("/requests", "saved")
+
+    @app.post("/requests/{rid}/delete")
+    async def request_delete(request: Request, rid: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        rt.requests.remove(rid)
+        return done("/requests", "req_removed")
+
+    @app.get("/requests/{rid}/invite.ics")
+    def request_owner_invite(request: Request, rid: str):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        r = rt.requests.get(rid)
+        if r is None:
+            return RedirectResponse("/requests", status_code=303)
+        return Response(
+            owner_invite(r),
+            media_type="text/calendar; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="meeting-{r.id}.ics"'},
+        )
+
+    @app.post("/requests/availability", response_class=HTMLResponse)
+    async def availability_save(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        ignore = [cid for cid in form.getlist("ignore") if cid in cfg().calendars]
+        try:
+            buffer = max(0, min(120, int(str(form.get("buffer", "0")))))
+        except ValueError:
+            buffer = 0
+
+        def mutate(d: Draft) -> None:
+            node = d.section("availability")
+            node["ignore_calendars"] = ignore
+            node["buffer_minutes"] = buffer
+            node["all_day_busy"] = form.get("all_day_busy") == "on"
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return requests_page(request, sess, str(exc), 400)
+        return done("/requests#availability", "saved")
+
+    # -- per-audience requests and widget ------------------------------------------------------
+
+    @app.post("/audiences/{aid}/requests", response_class=HTMLResponse)
+    async def audience_requests(request: Request, aid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if aid not in cfg().audiences:
+            return RedirectResponse("/sharing", status_code=303)
+        lengths = [int(x) for x in form.getlist("length") if str(x).isdigit()]
+        own_hours = form.get("own_hours") == "on"
+        days = [d for d in form.getlist("rday") if d in WEEKDAYS]
+        start, end = str(form.get("rstart", "09:00")), str(form.get("rend", "17:00"))
+        errors = []
+        if form.get("enabled") == "on" and not lengths:
+            errors.append("Offer at least one meeting length.")
+        if own_hours and (not days or not (_TIME.match(start) and _TIME.match(end))):
+            errors.append("Pick the days and times people can book, like 09:00 to 17:00.")
+
+        def num(name: str, dflt: int, lo: int, hi: int) -> int:
+            try:
+                return max(lo, min(hi, int(str(form.get(name, dflt)))))
+            except ValueError:
+                return dflt
+
+        if errors:
+            return audience_page(request, sess, aid, " ".join(errors), 400)
+
+        def mutate(d: Draft) -> None:
+            node = d.audiences[aid]
+            req = node.get("requests") if isinstance(node.get("requests"), dict) else {}
+            req["enabled"] = form.get("enabled") == "on"
+            req["lengths"] = lengths or [30]
+            req["slots"] = form.get("slots") == "on"
+            req["suggest"] = form.get("suggest") == "on"
+            if not (req["slots"] or req["suggest"]):
+                req["slots"] = True
+            req["notice_hours"] = num("notice_hours", 24, 0, 720)
+            req["days_ahead"] = num("days_ahead", 14, 1, 120)
+            step = num("step_minutes", 30, 15, 60)
+            req["step_minutes"] = step if step in (15, 30, 60) else 30
+            msg = str(form.get("message", "")).strip()[:500]
+            if msg:
+                req["message"] = msg
+            else:
+                req.pop("message", None)
+            if own_hours:
+                req["hours"] = {"days": days, "start": start.zfill(5), "end": end.zfill(5)}
+            else:
+                req.pop("hours", None)
+            node["requests"] = req
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return audience_page(request, sess, aid, str(exc), 400)
+        return done(f"/audiences/{aid}#requests", "saved")
+
+    @app.post("/audiences/{aid}/widget", response_class=HTMLResponse)
+    async def audience_widget(request: Request, aid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if aid not in cfg().audiences:
+            return RedirectResponse("/sharing", status_code=303)
+        sites = [x.strip() for x in str(form.get("sites", "")).replace(",", "\n").splitlines() if x.strip()]
+        try:
+            days = max(1, min(14, int(str(form.get("days", "7")))))
+        except ValueError:
+            days = 7
+
+        def mutate(d: Draft) -> None:
+            w = d.widget(aid)
+            if form.get("action") == "rotate" or not d.get_secret(w, "slug"):
+                d.rotate_widget_slug(aid)
+            if form.get("action") != "rotate":
+                w["enabled"] = form.get("enabled") == "on"
+                w["sites"] = sites
+                w["days"] = days
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return audience_page(request, sess, aid, str(exc), 400)
+        return done(f"/audiences/{aid}#widget", "rotated" if form.get("action") == "rotate" else "saved")
+
+    # -- notifications ------------------------------------------------------------------------
+
+    def notify_page(request, sess, error=None, status=200, tested=None):
+        return page(
+            request,
+            "admin/notifications.html",
+            {
+                "last": rt.notifier.last,
+                "enabled": rt.notifier.enabled(),
+                "tested": tested,
+                "error": error,
+                "suggest_topic": "glimpse-" + secrets.token_urlsafe(15).replace("_", "x"),
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/notifications", response_class=HTMLResponse)
+    def notifications(request: Request):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        return notify_page(request, sess)
+
+    @app.post("/notifications", response_class=HTMLResponse)
+    async def notifications_save(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+
+        def text(name: str, limit: int = 200) -> str:
+            return str(form.get(name, "")).strip()[:limit]
+
+        def mutate(d: Draft) -> None:
+            n = d.section("notify")
+            ntfy = n.setdefault("ntfy", {})
+            ntfy["enabled"] = form.get("ntfy_enabled") == "on"
+            ntfy["server"] = text("ntfy_server") or "https://ntfy.sh"
+            if text("ntfy_topic"):
+                d.set_secret(ntfy, "topic", text("ntfy_topic", 120), "GLIMPSE_NTFY_TOPIC")
+            if text("ntfy_token"):
+                d.set_secret(ntfy, "token", text("ntfy_token"), "GLIMPSE_NTFY_TOKEN")
+            if form.get("ntfy_token_clear") == "on":
+                d.drop_secret(ntfy, "token")
+                ntfy.pop("token", None)
+            em = n.setdefault("email", {})
+            em["enabled"] = form.get("email_enabled") == "on"
+            for key in ("smtp_host", "username", "from_addr", "to_addr"):
+                if text(key):
+                    em[key] = text(key)
+                else:
+                    em.pop(key, None)
+            try:
+                em["smtp_port"] = max(1, min(65535, int(text("smtp_port") or "587")))
+            except ValueError:
+                em["smtp_port"] = 587
+            sec = text("security")
+            em["security"] = sec if sec in ("starttls", "ssl", "none") else "starttls"
+            em["notify_requester"] = form.get("notify_requester") == "on"
+            if text("password", 300):
+                d.set_secret(em, "password", text("password", 300), "GLIMPSE_SMTP_PASSWORD")
+            dc = n.setdefault("discord", {})
+            dc["enabled"] = form.get("discord_enabled") == "on"
+            if text("webhook_url", 300):
+                d.set_secret(dc, "webhook_url", text("webhook_url", 300), "GLIMPSE_DISCORD_WEBHOOK")
+            if text("panel_url"):
+                n["panel_url"] = text("panel_url").rstrip("/")
+            else:
+                n.pop("panel_url", None)
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return notify_page(request, sess, str(exc), 400)
+        return done("/notifications", "saved")
+
+    @app.post("/notifications/test/{channel}", response_class=HTMLResponse)
+    async def notifications_test(request: Request, channel: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if channel not in CHANNELS:
+            return RedirectResponse("/notifications", status_code=303)
+        note = Note(
+            title="Glimpse test",
+            body="If you can read this, Glimpse can reach you here about meeting requests.",
+            url=f"{panel_link()}/requests",
+            tags="tada",
+        )
+        res = await run_in_threadpool(rt.notifier.send, channel, note)
+        return notify_page(request, sess, tested=(channel, res))
+
+    def panel_link() -> str:
+        n = cfg().notify
+        if n.panel_url:
+            return n.panel_url
+        base = cfg().server.base_url.rstrip("/")
+        return (
+            f"{base}:8443"
+            if base.startswith("https://") and base.count(":") == 1
+            else "http://127.0.0.1:8001"
+        )
+
+    # -- school mode ----------------------------------------------------------------------------
+
+    def school_page(request, sess, error=None, status=200, test=None):
+        sc = rt.glimpse.school
+        sched = sc.schedule
+        today = rt.glimpse.today()
+        return page(
+            request,
+            "admin/school.html",
+            {
+                "feeds": feed_rows(),
+                "feed_terms": sc.feed_terms,
+                "sched": sched,
+                "today_label": sched.label(today) if cfg().school.enabled else None,
+                "feed_error": sc.last_error,
+                "feed_ok": sc.last_success.astimezone(cfg().tz) if sc.last_success else None,
+                "test": test,
+                "error": error,
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/school", response_class=HTMLResponse)
+    def school(request: Request):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        return school_page(request, sess)
+
+    @app.post("/school", response_class=HTMLResponse)
+    async def school_save(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        url = str(form.get("calendar_url", "")).strip()
+        classes = [cid for cid in form.getlist("class_calendar") if cid in cfg().calendars]
+
+        def mutate(d: Draft) -> None:
+            node = d.section("school")
+            node["enabled"] = form.get("enabled") == "on"
+            name = str(form.get("name", "")).strip()[:80]
+            if name:
+                node["name"] = name
+            else:
+                node.pop("name", None)
+            if url:
+                node["calendar_url"] = normalize_url(url)
+            elif form.get("clear_url") == "on":
+                node.pop("calendar_url", None)
+            node["class_calendars"] = classes
+            node["pause_classes"] = form.get("pause_classes") == "on"
+            node["show_viewers"] = form.get("show_viewers") == "on"
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return school_page(request, sess, str(exc), 400)
+        await run_in_threadpool(school_fetch)
+        return done("/school", "saved")
+
+    def school_fetch() -> None:
+        with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as c:
+            rt.glimpse.school.refresh(c)
+
+    @app.post("/school/test", response_class=HTMLResponse)
+    async def school_test(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        url = normalize_url(str(form.get("calendar_url", "")).strip())
+        result = await run_in_threadpool(test_feed, url, cfg())
+        if result.get("ok"):
+
+            def detect() -> list:
+                with httpx.Client(
+                    timeout=20.0, follow_redirects=True, headers={"User-Agent": USER_AGENT}
+                ) as c:
+                    text = c.get(url).text
+                return read_feed(text, cfg())
+
+            try:
+                result["terms"] = await run_in_threadpool(detect)
+            except Exception as exc:  # noqa: BLE001 - show any problem on the page
+                result["terms"] = []
+                result["detect_error"] = type(exc).__name__
+        return school_page(request, sess, test={"url": url, **result})
+
+    def _term_dates(form, prefix: str = "") -> tuple[str, str, str] | None:
+        name = str(form.get(f"{prefix}name", "")).strip()[:40]
+        s, e = str(form.get(f"{prefix}start", "")), str(form.get(f"{prefix}end", ""))
+        if not name or not (_DATE.match(s) and _DATE.match(e)) or e < s:
+            return None
+        return name, s, e
+
+    @app.post("/school/terms/add", response_class=HTMLResponse)
+    async def school_term_add(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        got = _term_dates(form)
+        if got is None:
+            return school_page(
+                request, sess, "Give the term a name, a first day and a last day (after the first).", 400
+            )
+        name, s, e = got
+
+        def mutate(d: Draft) -> None:
+            terms = d.section("school").setdefault("terms", [])
+            terms.append({"name": name, "start": s, "end": e, "periods": []})
+            terms.sort(key=lambda t: str(t.get("start")))
+
+        await save(mutate)
+        return done("/school#terms", "saved")
+
+    @app.post("/school/terms/{index}/delete")
+    async def school_term_delete(request: Request, index: int):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+
+        def mutate(d: Draft) -> None:
+            terms = d.section("school").get("terms") or []
+            if 0 <= index < len(terms):
+                del terms[index]
+
+        await save(mutate)
+        return done("/school#terms", "saved")
+
+    @app.post("/school/terms/{index}/periods/add", response_class=HTMLResponse)
+    async def school_period_add(request: Request, index: int):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        got = _term_dates(form)
+        kind = str(form.get("kind", "break"))
+        if got is None or kind not in ("break", "exams", "closed"):
+            return school_page(request, sess, "Give the break a name, a first day and a last day.", 400)
+        name, s, e = got
+
+        def mutate(d: Draft) -> None:
+            terms = d.section("school").get("terms") or []
+            if 0 <= index < len(terms):
+                periods = terms[index].setdefault("periods", [])
+                periods.append({"name": name, "start": s, "end": e, "kind": kind})
+                periods.sort(key=lambda p: str(p.get("start")))
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return school_page(request, sess, str(exc), 400)
+        return done("/school#terms", "saved")
+
+    @app.post("/school/terms/{index}/periods/{pindex}/delete")
+    async def school_period_delete(request: Request, index: int, pindex: int):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+
+        def mutate(d: Draft) -> None:
+            terms = d.section("school").get("terms") or []
+            if 0 <= index < len(terms):
+                periods = terms[index].get("periods") or []
+                if 0 <= pindex < len(periods):
+                    del periods[pindex]
+
+        await save(mutate)
+        return done("/school#terms", "saved")
+
+    @app.post("/school/copy-detected")
+    async def school_copy_detected(request: Request):
+        """Turn the terms read from the feed into typed-in ones, so they can be edited."""
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        detected = rt.glimpse.school.feed_terms
+
+        def mutate(d: Draft) -> None:
+            terms = d.section("school").setdefault("terms", [])
+            have = {(str(t.get("start")), str(t.get("end"))) for t in terms}
+            for t in detected:
+                if (t.start.isoformat(), t.end.isoformat()) in have:
+                    continue
+                terms.append(
+                    {
+                        "name": t.name,
+                        "start": t.start.isoformat(),
+                        "end": t.end.isoformat(),
+                        "periods": [
+                            {
+                                "name": p.name,
+                                "start": p.start.isoformat(),
+                                "end": p.end.isoformat(),
+                                "kind": p.kind,
+                            }
+                            for p in t.periods
+                        ],
+                    }
+                )
+            terms.sort(key=lambda t: str(t.get("start")))
+
+        await save(mutate)
+        return done("/school#terms", "saved")
+
+    # -- support --------------------------------------------------------------------------------
+
+    @app.post("/support/dismiss")
+    async def support_dismiss(request: Request):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        rt.seen.touch("ui:support-note-dismissed")
+        rt.seen.flush()
+        return done("/", "thanks")
 
     return app

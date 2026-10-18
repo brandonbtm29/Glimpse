@@ -1,0 +1,5 @@
+# Shows a "Sponsor" button on the repository page.
+# Once you've joined GitHub Sponsors and/or made a Ko-fi page, uncomment the matching line(s).
+# github: brandonbtm29
+# ko_fi: your-ko-fi-name
+custom: ["https://github.com/brandonbtm29/Glimpse#support"]

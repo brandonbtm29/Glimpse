@@ -60,7 +60,14 @@ def run(
     servers = [
         uvicorn.Server(
             uvicorn.Config(
-                create_app(cfg, glimpse=rt.glimpse, background_refresh=False, seen=rt.seen),
+                create_app(
+                    cfg,
+                    glimpse=rt.glimpse,
+                    background_refresh=False,
+                    seen=rt.seen,
+                    requests=rt.requests,
+                    notifier=rt.notifier,
+                ),
                 host=host,
                 port=port,
                 proxy_headers=cfg.server.trust_proxy_headers,

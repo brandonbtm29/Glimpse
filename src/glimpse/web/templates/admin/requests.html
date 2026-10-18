@@ -1,0 +1,122 @@
+{% extends "admin/base.html" %}
+{% block title %}Requests · Glimpse settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Meeting requests</h1>
+    <p class="muted">Times people asked for through your shared pages{% if requesting %} ({% for aid, a in requesting %}<a href="/audiences/{{ aid }}#requests">{{ a.title }}</a>{{ ', ' if not loop.last }}{% endfor %}){% endif %}. Accepting doesn't change your calendars: use &ldquo;Add to my calendar&rdquo; afterwards.</p>
+  </div>
+</header>
+
+{% if not requesting %}
+<section class="panel empty-state">
+  <h2>No audience takes requests yet</h2>
+  <p class="muted">Turn on &ldquo;Meeting requests&rdquo; on an audience's page (for example your coworkers). Its shared page then gets a &ldquo;Request a meeting&rdquo; button.</p>
+</section>
+{% endif %}
+{% if requesting and not channels %}
+<p class="notice">Nothing will tell you about new requests yet. Switch on phone, email or Discord on <a href="/notifications">Notifications</a>.</p>
+{% endif %}
+{% if not can_email %}
+<p class="hint">People only hear back by checking their request's status page, because email to requesters is off. Set up email on <a href="/notifications">Notifications</a> to send them your answer.</p>
+{% endif %}
+
+<section class="panel">
+  <h2>Waiting for you {% if open_rows %}<span class="muted small">{{ open_rows | length }}</span>{% endif %}</h2>
+  {% if not open_rows %}<p class="muted">Nothing waiting.</p>{% endif %}
+  {% for row in open_rows %}
+  {% set r = row.r %}
+  <article class="req" id="r-{{ r.id }}">
+    <div class="req-head">
+      <div>
+        <strong>{{ r.name }}</strong> <span class="muted">&lt;{{ r.email }}&gt;</span>
+        <div class="muted small">{{ row.aud }} · via {{ row.via }} · {{ row.ago }}</div>
+      </div>
+      <span class="status {{ 'ok' if r.status == 'pending' else 'warn' }}">{{ 'Waiting for you' if r.status == 'pending' else 'Waiting for them' }}</span>
+    </div>
+    {% set clash %}{% if row.past %}<span class="status bad">already passed</span>{% elif not row.free %}<span class="status bad">clashes with your calendar</span>{% else %}<span class="status ok">you're free</span>{% endif %}{% endset %}
+    <p class="req-when"><strong>{{ row.when }}</strong> · {{ r.minutes }} min{% if r.kind == 'suggested' %} · <span class="muted">a time they suggested</span>{% endif %}
+      {% if not row.counter %}{{ clash }}{% endif %}</p>
+    {% if row.counter %}<p class="req-when muted">You proposed instead: <strong>{{ row.counter }}</strong> {{ clash }}</p>{% endif %}
+    {% if r.note %}<blockquote class="req-note">{{ r.note }}</blockquote>{% endif %}
+    {% if r.status == 'pending' %}
+    <form method="post" action="/requests/{{ r.id }}/answer" class="form req-answer">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label><span>Message to them <span class="muted">(optional)</span></span>
+        <textarea name="reply" rows="2" maxlength="1000" placeholder="Looking forward to it. Here's the Zoom link: ..."></textarea>
+      </label>
+      <div class="actions">
+        <button type="submit" name="action" value="accept">Accept</button>
+        <button type="submit" name="action" value="decline" class="secondary">Decline</button>
+      </div>
+      <details class="help">
+        <summary>Propose another time</summary>
+        <div class="grid3">
+          <label>Day <input type="date" name="date"></label>
+          <label>Time <span class="muted small">(your time)</span> <input type="time" name="time" step="900"></label>
+          <label>Length
+            <select name="len">{% for m in lengths %}<option value="{{ m }}" {% if m == r.minutes %}selected{% endif %}>{{ m }} min</option>{% endfor %}</select>
+          </label>
+        </div>
+        <button type="submit" name="action" value="counter" class="secondary small">Send this time instead</button>
+      </details>
+    </form>
+    {% else %}
+    <form method="post" action="/requests/{{ r.id }}/delete" class="inline-form" data-confirm="Remove this request from the list?">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="link">Withdraw and remove</button>
+    </form>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+{% if done_rows %}
+<section class="panel">
+  <h2>Answered</h2>
+  <table class="table compact">
+    <tbody>
+    {% for row in done_rows %}
+    {% set r = row.r %}
+      <tr id="r-{{ r.id }}">
+        <td><strong>{{ r.name }}</strong><div class="muted small">{{ row.aud }}</div></td>
+        <td>{{ row.when }}</td>
+        <td><span class="status {{ 'ok' if r.status == 'accepted' else 'bad' if r.status == 'declined' else '' }}">{{ {'accepted': 'Accepted', 'declined': 'Declined', 'cancelled': 'Cancelled'}[r.status] }}</span></td>
+        <td class="right">
+          {% if r.status == 'accepted' and not row.past %}<a class="button secondary small" href="/requests/{{ r.id }}/invite.ics" download>Add to my calendar</a>{% endif %}
+          <form method="post" action="/requests/{{ r.id }}/delete" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" class="link small">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="fine">Answered requests are kept for about four months, then removed.</p>
+</section>
+{% endif %}
+
+<section class="panel" id="availability">
+  <h2>How open times are worked out</h2>
+  <p class="muted">Open times (for requests and website widgets) leave out every busy event on all your calendars, plus requests that are waiting or accepted. Events marked &ldquo;free&rdquo; in Outlook or Google never block time, and all-day events only do if you tick the box below.</p>
+  <form method="post" action="/requests/availability" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    {% if feeds %}
+    <fieldset class="checks">
+      <legend>Calendars that never make you busy <span class="muted small">(e.g. holidays, birthdays, a shared family calendar)</span></legend>
+      {% for f in feeds %}
+      <label class="check"><input type="checkbox" name="ignore" value="{{ f.id }}" {% if f.id in cfg.availability.ignore_calendars %}checked{% endif %}> <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}</label>
+      {% endfor %}
+    </fieldset>
+    {% endif %}
+    <label class="check"><input type="checkbox" name="all_day_busy" {% if cfg.availability.all_day_busy %}checked{% endif %}> All-day events block the whole day <span class="muted">(trips, conferences; untick if birthdays and holidays clutter your calendars)</span></label>
+    <label>Keep free before and after busy times (minutes)
+      <input type="number" name="buffer" min="0" max="120" value="{{ cfg.availability.buffer_minutes }}">
+      <span class="hint">Time to walk between buildings or catch your breath. 0 for none.</span>
+    </label>
+    <div class="actions"><button type="submit" class="secondary">Save</button></div>
+  </form>
+</section>
+{% endblock %}

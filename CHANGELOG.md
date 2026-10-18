@@ -8,6 +8,31 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-17
+
+### Added
+- **Meeting requests**: an audience can ask for a meeting from its shared page, either by picking
+  one of your open times (a day, then a time, in their own time zone) or by suggesting one. You
+  accept, decline or propose another time on the new **Requests** page. Requesters get a private
+  status page to follow the answer, accept a new time, add the meeting to their calendar or
+  cancel. Open times come from all your calendars, so hidden events still block the time without
+  revealing anything about it. Set lengths, bookable hours, notice and how far ahead per audience.
+- **Notifications** by phone (ntfy), email (SMTP) and/or Discord, each switched on separately,
+  with a test button. Email can also send requesters a confirmation and your answer with a
+  calendar file. Secrets are kept in `.env`.
+- **Website widget**: an embeddable free/busy view of the next days (no titles) with an optional
+  "Request a meeting" button. It has its own link and a list of sites allowed to embed it.
+- **School mode**: terms, breaks and exam weeks, typed in or read from your school's academic
+  calendar feed. Viewers see "Fall 2026 · Week 7" and break days; class calendars pause over
+  breaks and between terms.
+- **Support Glimpse**: a Support section in the README, a one-time note in the panel once setup is
+  done, and an optional, off-by-default "Support the project" link on shared pages.
+- A "How this was built" section in the README.
+
+### Fixed
+- Date ranges spanning the same month in different years (e.g. an audience's browse range of a
+  year either way) showed only one year.
+
 ## [0.4.1] - 2026-10-13
 
 ### Added

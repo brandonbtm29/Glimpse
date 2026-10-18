@@ -2,6 +2,7 @@
 /config.yaml
 /.env
 /state.json
+/requests.json
 .env.local
 cache/
 *.ics.cache

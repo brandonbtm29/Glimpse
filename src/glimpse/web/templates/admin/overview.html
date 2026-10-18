@@ -27,6 +27,23 @@
 </section>
 {% endif %}
 
+{% if support_note %}
+<section class="panel support-note">
+  <div class="panelhead">
+    <h2>You're all set</h2>
+    <form method="post" action="/support/dismiss" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="link">Don't show again</button>
+    </form>
+  </div>
+  <p class="muted">Glimpse is free and always will be. If it's useful to you, you can chip in toward its development, whatever amount you like, once. <a href="{{ support_url }}" target="_blank" rel="noopener">Support Glimpse</a></p>
+</section>
+{% endif %}
+
+{% if pending_requests %}
+<p class="notice"><a href="/requests">{{ pending_requests }} meeting request{{ '' if pending_requests == 1 else 's' }}</a> waiting for your answer.</p>
+{% endif %}
+
 {% if local_base %}
 <p class="notice">Your public address is still set to <code>{{ cfg.server.base_url }}</code>, so the links below only work on this PC. Set your Tailscale Funnel address in <a href="/settings">Settings</a>.</p>
 {% endif %}

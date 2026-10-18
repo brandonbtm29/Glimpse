@@ -217,11 +217,16 @@ def update_readiness(root: Path, tag: str | None = None, fetch: bool = True) -> 
 
 
 def backup_settings(config_path: Path, env_path: Path) -> Path:
-    """Copy config.yaml, .env and state.json to backups/<timestamp>/ beside the config."""
+    """Copy config.yaml, .env, state.json and requests.json to backups/<timestamp>/ beside the config."""
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = config_path.resolve().parent / "backups" / f"before-update-{stamp}"
     dest.mkdir(parents=True, exist_ok=True)
-    for src in (config_path, env_path, config_path.with_name("state.json")):
+    for src in (
+        config_path,
+        env_path,
+        config_path.with_name("state.json"),
+        config_path.with_name("requests.json"),
+    ):
         if src.is_file():
             shutil.copy2(src, dest / src.name)
     if os.name != "nt":

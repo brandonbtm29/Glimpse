@@ -70,6 +70,12 @@
   </section>
 
   <section class="panel">
+    <h2>Support Glimpse</h2>
+    <label class="check"><input type="checkbox" name="support_link" {% if cfg.support_link %}checked{% endif %}> Show a small &ldquo;Support the project&rdquo; link at the bottom of shared pages</label>
+    <p class="hint">Off by default. It points to the Support section of Glimpse's GitHub page; nothing else changes for viewers.</p>
+  </section>
+
+  <section class="panel">
     <h2>Duplicate events</h2>
     <label class="check"><input type="checkbox" name="merge_duplicates" {% if cfg.overrides.merge_duplicates %}checked{% endif %}> Show an event once when it's on more than one of your calendars</label>
     <p class="hint">Glimpse treats events as the same when they share an invite ID, or have the same title and exact times on different calendars. The merged event uses the most detailed level any of its calendars allows, but if any copy is marked private or caught by a privacy rule, that limit wins.</p>

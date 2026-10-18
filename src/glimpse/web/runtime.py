@@ -9,6 +9,8 @@ import httpx
 
 from ..config import AppConfig, ConfigError
 from ..core import Glimpse
+from ..notify import Notifier
+from ..requests_store import RequestStore
 from ..sources import USER_AGENT
 from ..store import ConfigStore
 from ..updates import UpdateChecker
@@ -22,6 +24,8 @@ class Runtime:
         self.glimpse = glimpse or Glimpse(cfg)
         self.store = store
         self.seen = SeenStore(store.config_path.parent / "state.json" if store else None)
+        self.requests = RequestStore(store.config_path.parent / "requests.json" if store else None)
+        self.notifier = Notifier(lambda: self.cfg)
         self.updates = UpdateChecker(
             state_path=store.config_path.parent / "logs" / "update-check.json" if store else None
         )
@@ -74,12 +78,15 @@ class Runtime:
             for cid in ids:
                 if cid in cache.config.calendars:
                     cache.refresh(cid, c)
+            if calendar_ids is None:
+                self.glimpse.school.refresh(c)
 
     async def refresh_loop(self) -> None:
         while True:
             try:
                 await asyncio.to_thread(self.reload_if_changed)
                 await asyncio.to_thread(self.refresh)
+                await asyncio.to_thread(self.requests.prune)
                 if self.cfg.updates.check and self.updates.due():
                     await asyncio.to_thread(self.updates.check, self.cfg.updates.repo)
             except Exception:

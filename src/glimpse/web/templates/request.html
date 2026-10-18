@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Request a meeting{% endblock %}
+
+{% macro fields(prefix) %}
+  <div class="req-fields">
+    <label>Your name <input type="text" name="name" value="{{ values.name or person or '' }}" maxlength="80" autocomplete="name" required></label>
+    <label>Your email <input type="email" name="email" value="{{ values.email or '' }}" maxlength="120" autocomplete="email" required>
+      <span class="hint">Only used to answer you.</span>
+    </label>
+    <label class="wide"><span>What's it about? <span class="muted">(optional)</span></span>
+      <textarea name="note" rows="3" maxlength="1000">{{ values.note or '' }}</textarea>
+    </label>
+    <label class="hp" aria-hidden="true">Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+  </div>
+{% endmacro %}
+
+{% block body %}
+<main class="page req-page">
+  <div class="welcome">
+    <svg class="logo" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><rect x="3" y="5" width="26" height="24" rx="5" fill="#3b6fd8"/><rect x="3" y="5" width="26" height="7" rx="3" fill="#2a55b0"/><circle cx="16" cy="20" r="4" fill="#fff"/></svg>
+    <div>
+      <p class="hello">Request a meeting{% if owner_first %} with {{ owner_first }}{% endif %}</p>
+      <p class="whose">{{ aud.title }}{% if person %} · for {{ person }}{% endif %}</p>
+    </div>
+  </div>
+  {% if back %}<p class="backlink"><a href="{{ back }}">&#8249; Back to the schedule</a></p>{% endif %}
+  {% if r.message %}<p class="req-message">{{ r.message }}</p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+
+  {% if r.lengths | length > 1 %}
+  <nav class="views req-len" aria-label="Meeting length">
+    {% for m in r.lengths %}
+    {% if m == minutes %}<span class="tab current" aria-current="true">{{ m }} min</span>{% else %}<a class="tab" href="?len={{ m }}&amp;tz={{ tz.key }}{% if chosen %}&amp;day={{ chosen.isoformat() }}{% endif %}">{{ m }} min</a>{% endif %}
+    {% endfor %}
+  </nav>
+  {% else %}
+  <p class="muted">{{ minutes }}-minute meeting</p>
+  {% endif %}
+
+  {% if r.slots %}
+  <form method="post" class="req-form">
+    <input type="hidden" name="ft" value="{{ ft }}">
+    <input type="hidden" name="mode" value="slot">
+    <input type="hidden" name="len" value="{{ minutes }}">
+    <input type="hidden" name="tz" value="{{ tz.key }}">
+    <h2>Pick a time</h2>
+    <p class="muted small">Times in {{ tz_label }}. Only open times are shown.</p>
+    {% if days %}
+    <nav class="day-pick" aria-label="Day">
+      {% for d, slots in days %}
+      {% if d == chosen %}<span class="dchip current" aria-current="true"><b>{{ fmt_day(d).split(' ')[0] }}</b> {{ fmt_day(d).split(' ', 1)[1] }}<i>{{ slots | length }} open</i></span>
+      {% else %}<a class="dchip" href="?len={{ minutes }}&amp;tz={{ tz.key }}&amp;day={{ d.isoformat() }}"><b>{{ fmt_day(d).split(' ')[0] }}</b> {{ fmt_day(d).split(' ', 1)[1] }}<i>{{ slots | length }} open</i></a>{% endif %}
+      {% endfor %}
+    </nav>
+    <input type="hidden" name="day" value="{{ chosen.isoformat() }}">
+    <fieldset class="slot-day">
+      <legend>{{ fmt_day(chosen) }}</legend>
+      <div class="slots">
+        {% for sl in chosen_slots %}
+        {% set val = sl.start.isoformat() %}
+        <label class="slot"><input type="radio" name="start" value="{{ val }}" {% if values.start == val %}checked{% endif %} required><span>{{ fmt_time(sl.start.astimezone(tz)) }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {{ fields("slot") }}
+    <div class="actions"><button type="submit">Send request</button></div>
+    {% else %}
+    <p class="empty">No open {{ minutes }}-minute times right now.{% if r.suggest %} You can suggest a time below.{% endif %}</p>
+    {% endif %}
+  </form>
+  {% endif %}
+
+  {% if r.suggest %}
+  <details class="req-suggest"{% if not r.slots or not days or values.mode == 'suggest' %} open{% endif %}>
+    <summary>{% if r.slots %}None of these work? Suggest another time{% else %}Suggest a time{% endif %}</summary>
+    <form method="post" class="req-form">
+      <input type="hidden" name="ft" value="{{ ft }}">
+      <input type="hidden" name="mode" value="suggest">
+      <input type="hidden" name="tz" value="{{ tz.key }}">
+      <div class="req-fields">
+        <label>Day <input type="date" name="date" min="{{ min_day }}" max="{{ max_day }}" value="{{ values.date or '' }}" required></label>
+        <label><span>Time <span class="muted">({{ tz_label }})</span></span> <input type="time" name="time" step="900" value="{{ values.time or '' }}" required></label>
+        <label>Length
+          <select name="len">{% for m in r.lengths %}<option value="{{ m }}" {% if m == minutes %}selected{% endif %}>{{ m }} min</option>{% endfor %}</select>
+        </label>
+      </div>
+      {{ fields("suggest") }}
+      <div class="actions"><button type="submit" class="secondary">Suggest this time</button></div>
+    </form>
+  </details>
+  {% endif %}
+
+  <details class="zonepick">
+    <summary>Change time zone</summary>
+    <form method="get">
+      <input type="hidden" name="len" value="{{ minutes }}">
+      <label>Time zone
+        <select name="tz">{% for z in zones %}<option value="{{ z }}" {% if z == tz.key %}selected{% endif %}>{{ z.replace('_', ' ') }}</option>{% endfor %}</select>
+      </label>
+      <button type="submit" class="small">Show</button>
+    </form>
+  </details>
+  <p class="fine">Sending a request doesn't book anything yet: {{ owner_first or "they" }} will accept it, decline it, or suggest another time.</p>
+</main>
+<script src="/static/viewer.js?v={{ version }}" defer></script>
+{% endblock %}
