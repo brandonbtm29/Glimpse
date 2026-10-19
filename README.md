@@ -285,7 +285,9 @@ Glimpse is free and open source, and always will be. If it's useful to you:
 
 - **Star the repository** and tell a friend who juggles several calendars.
 - **Report bugs and ideas** in [Issues](https://github.com/brandonbtm29/Glimpse/issues).
-- **Chip in toward development**, once, whatever amount you like. Donation links will appear here as soon as they're set up.
+- **Chip in toward development**, once or monthly, whatever amount you like:
+  - [GitHub Sponsors](https://github.com/sponsors/brandonbtm29)
+  - [Ko-fi](https://ko-fi.com/brandonbtm29)
 
 Shared pages can show a small "Support the project" link at the bottom; it's off unless you switch it on in Settings.
 

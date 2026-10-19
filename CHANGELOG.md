@@ -8,6 +8,9 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+- Donation links: GitHub Sponsors and Ko-fi in the README's Support section and the repository's
+  Sponsor button.
+
 ## [0.6.0] - 2026-10-19
 
 ### Added
