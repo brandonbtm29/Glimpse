@@ -63,7 +63,7 @@
       </div>
     </fieldset>
     {{ fields("slot") }}
-    <div class="actions"><button type="submit">Send request</button></div>
+    <div class="actions"><button type="submit">{{ 'Book this time' if r.auto_confirm else 'Send request' }}</button></div>
     {% else %}
     <p class="empty">No open {{ minutes }}-minute times right now.{% if r.suggest %} You can suggest a time below.{% endif %}</p>
     {% endif %}
@@ -100,7 +100,11 @@
       <button type="submit" class="small">Show</button>
     </form>
   </details>
+  {% if r.auto_confirm %}
+  <p class="fine">Picking an open time books it straight away; you'll get the details right after.{% if r.suggest %} A suggested time still needs {{ owner_first or "their" }}{{ "'s" if owner_first else "" }} OK.{% endif %}</p>
+  {% else %}
   <p class="fine">Sending a request doesn't book anything yet: {{ owner_first or "they" }} will accept it, decline it, or suggest another time.</p>
+  {% endif %}
 </main>
 <script src="/static/viewer.js?v={{ version }}" defer></script>
 {% endblock %}

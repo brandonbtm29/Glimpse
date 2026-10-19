@@ -11,7 +11,7 @@
     </div>
   </div>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-  {% if sent %}<p class="flash" role="status">Sent!{% if emailed %} You'll get an email at {{ item.email }} when there's an answer.{% else %} Bookmark this page to check for an answer.{% endif %}</p>{% endif %}
+  {% if sent %}<p class="flash" role="status">{{ 'Booked!' if item.status == 'accepted' else 'Sent!' }}{% if emailed %} {% if item.status == 'accepted' %}The details are also on their way to {{ item.email }}.{% else %}You'll get an email at {{ item.email }} when there's an answer.{% endif %}{% else %} Bookmark this page{{ '' if item.status == 'accepted' else ' to check for an answer' }}.{% endif %}</p>{% endif %}
 
   <section class="req-status st-{{ item.status }}">
     {% if item.status == 'pending' %}
@@ -21,7 +21,9 @@
     {% elif item.status == 'accepted' %}
       <h1>Confirmed</h1>
       <p class="when">{{ when }}</p>
-      <p><a class="btn primary" href="/req/{{ item.token }}/invite.ics" download>Add to your calendar</a></p>
+      {% if item.link %}<p class="join"><a class="btn primary" href="{{ item.link }}" target="_blank" rel="noopener">Join the meeting</a> <span class="muted small">{{ item.link }}</span></p>{% endif %}
+      {% if item.location %}<p class="muted">Where: {{ item.location }}</p>{% endif %}
+      <p><a class="btn" href="/req/{{ item.token }}/invite.ics" download>Add to your calendar</a></p>
     {% elif item.status == 'countered' %}
       <h1>{{ who }} suggested another time</h1>
       <p class="when">{{ counter }}</p>
@@ -46,7 +48,7 @@
   {% if item.status in ('pending', 'accepted') and not past %}
   <form method="post" class="cancel-req">
     <input type="hidden" name="ft" value="{{ ft }}">
-    <button type="submit" name="action" value="cancel" class="link danger" data-confirm="Cancel this request?">Cancel this request</button>
+    <button type="submit" name="action" value="cancel" class="link danger" data-confirm="{{ 'Cancel this meeting?' if item.status == 'accepted' else 'Cancel this request?' }}">{{ 'Cancel this meeting' if item.status == 'accepted' else 'Cancel this request' }}</button>
   </form>
   {% endif %}
   <p class="fine">This page is private to you: anyone with its link can see and cancel this request.</p>

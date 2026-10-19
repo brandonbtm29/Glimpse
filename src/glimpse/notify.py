@@ -50,6 +50,8 @@ def invite_ics(
     method: str = "PUBLISH",
     sequence: int = 0,
     status: str = "CONFIRMED",
+    location: str | None = None,
+    url: str | None = None,
 ) -> str:
     """A one-event calendar file people can open to add the meeting."""
 
@@ -81,6 +83,10 @@ def invite_ics(
     ]
     if description:
         lines.append(f"DESCRIPTION:{esc(description)}")
+    if location:
+        lines.append(f"LOCATION:{esc(location)}")
+    if url and "\n" not in url and "\r" not in url:
+        lines.append(f"URL:{url}")
     lines += ["END:VEVENT", "END:VCALENDAR", ""]
     return "\r\n".join(_fold(line) for line in lines)
 

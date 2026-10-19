@@ -38,7 +38,8 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **People with their own links**: put someone in an audience with a personal link. Move them between audiences, give the link an end date, see when they last looked, or cut off just them. Switch an audience's shared link off once everyone has their own.
 - **Day, week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
 - **Time zones**: viewers see your schedule in their own time (detected, or picked from a list), with your time a click away. Hour limits always stay on your clock.
-- **Meeting requests**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, and they get a calendar file once it's confirmed. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
+- **Glimpse calendars**: make calendars right in Glimpse (no other account needed), add one-off or repeating events in the panel, and share one as a subscription link for phones and calendar apps.
+- **Meeting requests and booking**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, or let open times be booked straight away. Confirmed meetings can land on a Glimpse calendar automatically, with your Zoom, Teams or Meet link, and there's an optional public booking page. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
 - **Notifications on your phone, by email or in Discord**: switch on any mix of the three to hear about new requests right away.
 - **Website widget**: a small free/busy view of the next few days (no titles) for a lab, course or personal site, with an optional "Request a meeting" button. It has its own link and you choose which sites may embed it.
 - **School mode**: tell Glimpse your semesters (typed in, or read from your school's academic calendar feed). Viewers see "Fall 2026 · Week 7" and break days, and class events pause over breaks and between terms.
@@ -170,6 +171,12 @@ With **People**, each person gets their own link instead, so cutting off one per
 
 **Testing a link from outside:** on the Setup page, **Test from the internet** checks your share links the way someone without Tailscale opens them. If a link works there but not on your own laptop with Tailscale switched off, your laptop is still remembering the private Tailscale address: try a phone on mobile data, or clear the browser's DNS cache.
 
+### Glimpse calendars
+
+On **My calendars**, make a calendar (say, "Plans" or "Office hours") and add events: timed or all day, one-off or repeating, with a place and notes. Mark an event **show as free** so it doesn't block meeting times, or **private** so everyone sees just "Busy". Skip a single date of a repeating event from its page.
+
+They behave like any other calendar: set who sees them on **Who sees what**, put them in groups, and they count for open times. Each is a standard `.ics` file in `local-calendars/` beside your settings (included in update backups). **Create a subscription link** on a calendar's page to add it to your phone or share it; that link shows every event in full, so use an audience to share more carefully. Events are edited in the panel; phones show subscriptions read-only.
+
 ### Meeting requests
 
 Turn on **Meeting requests** on an audience's page. Its shared page then gets a **Request a meeting** button that leads to:
@@ -177,7 +184,11 @@ Turn on **Meeting requests** on an audience's page. Its shared page then gets a 
 - **Open times** to pick from, inside the hours you choose (by default the audience's hours, else weekdays 9–5), at least a day ahead and up to two weeks out (both adjustable), in the viewer's own time zone; and/or
 - **Suggest another time**, for when none of those work.
 
-Requests wait on the panel's **Requests** page, where you accept, decline, or propose a new time, with an optional message. Glimpse can't write to Google, Outlook or iCloud, so after accepting use **Add to my calendar** (a one-event file your calendar app opens). The requester gets a private status page where they can see your answer, accept a new time, add the meeting to their calendar, or cancel. Waiting and accepted requests keep their time off the open list so nobody double-books you.
+Requests wait on the panel's **Requests** page, where you accept, decline, or propose a new time, with an optional message. Or choose **Book it straight away**: picked open times are confirmed at once (suggested times still wait for you).
+
+**Meeting links and booked meetings.** On the audience's page, add your Zoom personal room, a standing Teams meeting or a Google Meet link (or a room). It's only revealed once a meeting is confirmed: on the requester's status page ("Join the meeting"), in the confirmation email and in the calendar file. You can change it per meeting when accepting. Choose a Glimpse calendar under **Add confirmed meetings to** and every confirmed meeting is added there (and removed if either of you cancels), so it shows on your pages and, through that calendar's subscription link, on your phone. Glimpse uses the link you give it; it doesn't create a new Zoom or Teams meeting for each booking.
+
+**Public booking page.** Tick **Also offer a public booking page** for a separate link (no password, open times only) to put in an email signature or on a website. Glimpse can't write to Google, Outlook or iCloud, so either let it add meetings to a Glimpse calendar (below) or use **Add to my calendar** (a one-event file your calendar app opens). The requester gets a private status page where they can see your answer, accept a new time, add the meeting to their calendar, or cancel. Waiting and accepted requests keep their time off the open list so nobody double-books you.
 
 Open times are worked out from every calendar except ones you mark on the Requests page as never making you busy (holidays, birthdays), with an optional buffer between meetings. Events marked "free" never block time. Requests are kept in `requests.json` beside your config. There's a limit on how many requests one link or one network address can send.
 

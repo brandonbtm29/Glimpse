@@ -217,7 +217,7 @@ def update_readiness(root: Path, tag: str | None = None, fetch: bool = True) -> 
 
 
 def backup_settings(config_path: Path, env_path: Path) -> Path:
-    """Copy config.yaml, .env, state.json and requests.json to backups/<timestamp>/ beside the config."""
+    """Copy config.yaml, .env, state.json, requests.json and Glimpse calendars to backups/<timestamp>/."""
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = config_path.resolve().parent / "backups" / f"before-update-{stamp}"
     dest.mkdir(parents=True, exist_ok=True)
@@ -229,6 +229,9 @@ def backup_settings(config_path: Path, env_path: Path) -> Path:
     ):
         if src.is_file():
             shutil.copy2(src, dest / src.name)
+    local = config_path.resolve().parent / "local-calendars"
+    if local.is_dir():
+        shutil.copytree(local, dest / "local-calendars", ignore=shutil.ignore_patterns("deleted"))
     if os.name != "nt":
         os.chmod(dest, 0o700)
     return dest

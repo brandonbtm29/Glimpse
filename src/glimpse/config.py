@@ -93,6 +93,10 @@ EMOJI_MARKERS = [
 ]
 
 
+def _blank_none(v: str | None) -> str | None:
+    return None if v is None or not str(v).strip() or str(v).strip().lower() in ("null", "none") else v
+
+
 def _check_marker(v: str | None) -> str | None:
     """A named shape (circle, star...) or a short emoji/symbol."""
     if v is None or not v.strip():
@@ -123,6 +127,9 @@ class CalendarCfg(_Strict):
     label: str | None = None  # shown at the `label` level; defaults to `name`
     color: str | None = None  # CSS colour; a palette colour is used when unset
     marker: str | None = None  # optional shape or emoji shown with its events
+    local: bool = False  # a Glimpse calendar: events made in the panel, kept in a file beside the config
+    share: bool = False  # local calendars: offer a full-detail subscription link
+    share_slug: str | None = None  # that link's secret part
 
     @field_validator("color")
     @classmethod
@@ -133,6 +140,11 @@ class CalendarCfg(_Strict):
     @classmethod
     def _marker(cls, v: str | None) -> str | None:
         return _check_marker(v)
+
+    @field_validator("share_slug")
+    @classmethod
+    def _share_slug(cls, v: str | None) -> str | None:
+        return None if v is None or not v.strip() or v.strip().lower() in ("null", "none") else _check_slug(v)
 
     @property
     def display_label(self) -> str:
@@ -298,6 +310,30 @@ class RequestsCfg(_Strict):
     days_ahead: int = Field(default=14, ge=1, le=120)  # how far ahead open times are offered
     step_minutes: Literal[15, 30, 60] = 30  # start times every N minutes
     message: str | None = Field(default=None, max_length=500)  # shown above the request form
+    auto_confirm: bool = False  # picked open times are booked straight away (suggestions still wait)
+    calendar: str | None = None  # Glimpse calendar that confirmed meetings are added to
+    meeting_link: str | None = None  # e.g. your Zoom or Teams link; shared only once confirmed
+    location: str | None = Field(default=None, max_length=200)  # e.g. a room; shared only once confirmed
+    booking: bool = False  # a public booking page with its own link (no password, open times only)
+    booking_slug: str | None = None
+
+    @field_validator("calendar", "location")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        return _blank_none(v)
+
+    @field_validator("meeting_link")
+    @classmethod
+    def _link(cls, v: str | None) -> str | None:
+        v = _blank_none(v)
+        if v and not re.fullmatch(r"https?://\S+", v.strip()):
+            raise ValueError("the meeting link should start with https://")
+        return v.strip() if v else v
+
+    @field_validator("booking_slug")
+    @classmethod
+    def _booking_slug(cls, v: str | None) -> str | None:
+        return None if v is None or not v.strip() or v.strip().lower() in ("null", "none") else _check_slug(v)
 
     @field_validator("lengths")
     @classmethod
@@ -470,10 +506,6 @@ class UpdatesCfg(_Strict):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", v):
             raise ValueError("updates.repo must look like owner/name")
         return v
-
-
-def _blank_none(v: str | None) -> str | None:
-    return None if v is None or not str(v).strip() or str(v).strip().lower() in ("null", "none") else v
 
 
 class NtfyCfg(_Strict):
@@ -691,7 +723,23 @@ class AppConfig(_Strict):
             if person.slug in slugs:
                 raise ValueError(f"person {pid!r} has the same link as {slugs[person.slug]!r}")
             slugs[person.slug] = pid
+        for cid, cal in self.calendars.items():
+            if cal.share and not cal.share_slug:
+                raise ValueError(f"calendar {cid!r} is shared but has no share slug")
+            if cal.share_slug:
+                if cal.share_slug in slugs:
+                    raise ValueError(f"calendar {cid!r} has the same share link as {slugs[cal.share_slug]!r}")
+                slugs[cal.share_slug] = f"{cid} share"
         for aid, aud in self.audiences.items():
+            r = aud.requests
+            if r.calendar and (r.calendar not in self.calendars or not self.calendars[r.calendar].local):
+                raise ValueError(f"audience {aid!r}: {r.calendar!r} isn't a Glimpse calendar")
+            if r.booking and not r.booking_slug:
+                raise ValueError(f"audience {aid!r} has a booking page but no booking slug")
+            if r.booking_slug:
+                if r.booking_slug in slugs:
+                    raise ValueError(f"{aid!r} has the same booking link as {slugs[r.booking_slug]!r}")
+                slugs[r.booking_slug] = f"{aid} booking"
             if aud.widget.enabled and not aud.widget.slug:
                 raise ValueError(f"audience {aid!r} has a widget turned on but no widget slug")
             if aud.widget.slug:

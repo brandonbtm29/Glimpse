@@ -124,6 +124,23 @@ class Draft:
             node["color"] = color.strip()
         return cid
 
+    def add_local_calendar(self, name: str, color: str | None = None) -> str:
+        """A Glimpse calendar: its events live in local-calendars/<id>.ics beside the config."""
+        from .localcal import FOLDER
+
+        cid = make_id(name, self.calendars)
+        node: dict[str, Any] = {"name": name.strip(), "url": f"{FOLDER}/{cid}.ics", "local": True}
+        if color:
+            node["color"] = color.strip()
+        self.calendars[cid] = node
+        return cid
+
+    def set_calendar_share(self, cid: str, on: bool, rotate: bool = False) -> None:
+        node = self.calendars[cid]
+        if rotate or (on and not self.get_secret(node, "share_slug")):
+            self.set_secret(node, "share_slug", new_slug(), _env_name("CAL", cid, "SHARE_SLUG"))
+        node["share"] = on
+
     def remove_calendar(self, cid: str) -> None:
         node = self.calendars.pop(cid, None)
         if node is None:
@@ -137,6 +154,11 @@ class Draft:
         for grp in (self.raw.get("groups") or {}).values():
             if isinstance(grp, dict) and isinstance(grp.get("calendars"), list):
                 grp["calendars"] = [c for c in grp["calendars"] if c != cid]
+        self.drop_secret(node, "share_slug")
+        for aud in self.audiences.values():
+            req = aud.get("requests") if isinstance(aud, dict) else None
+            if isinstance(req, dict) and req.get("calendar") == cid:
+                req.pop("calendar")
         for sect, key in (("availability", "ignore_calendars"), ("school", "class_calendars")):
             node2 = self.raw.get(sect)
             if isinstance(node2, dict) and isinstance(node2.get(key), list):
@@ -229,6 +251,8 @@ class Draft:
         self.drop_secret(node, "password_hash")
         if isinstance(node.get("widget"), dict):
             self.drop_secret(node["widget"], "slug")
+        if isinstance(node.get("requests"), dict):
+            self.drop_secret(node["requests"], "booking_slug")
         for pid, person in list((self.raw.get("people") or {}).items()):
             if isinstance(person, dict) and person.get("audience") == aid:
                 self.remove_person(pid)
@@ -283,6 +307,18 @@ class Draft:
         if not isinstance(node.get("widget"), dict):
             node["widget"] = {}
         return node["widget"]
+
+    def requests_node(self, aid: str) -> dict[str, Any]:
+        node = self.audiences[aid]
+        if not isinstance(node.get("requests"), dict):
+            node["requests"] = {}
+        return node["requests"]
+
+    def set_booking(self, aid: str, on: bool, rotate: bool = False) -> None:
+        req = self.requests_node(aid)
+        if rotate or (on and not self.get_secret(req, "booking_slug")):
+            self.set_secret(req, "booking_slug", new_slug(), _env_name("AUD", aid, "BOOKING_SLUG"))
+        req["booking"] = on
 
     def rotate_widget_slug(self, aid: str) -> None:
         self.set_secret(self.widget(aid), "slug", new_slug(), _env_name("AUD", aid, "WIDGET_SLUG"))

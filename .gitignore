@@ -3,6 +3,7 @@
 /.env
 /state.json
 /requests.json
+/local-calendars/
 .env.local
 cache/
 *.ics.cache

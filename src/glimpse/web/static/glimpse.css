@@ -365,3 +365,5 @@ a.dchip:hover { border-color: var(--accent); }
 .evdlg-when { margin: 8px 0 0; font-weight: 600; }
 .evdlg-sub, .evdlg-loc { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .evdlg-notes { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line); white-space: pre-wrap; font-size: 14px; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; }
+.req-status .join { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.req-status .join .small { font-size: 12px; overflow-wrap: anywhere; }

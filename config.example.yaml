@@ -30,6 +30,8 @@ admin:
 #   name   shown in the legend and in full/title views
 #   label  shown instead of the title at the `label` level (default: name)
 #   color  optional hex colour, e.g. "#2f9e44"
+#   local  true for a Glimpse calendar made on the My calendars page (url is then its
+#          .ics file in local-calendars/; share: true + share_slug gives it a subscription link)
 #   marker optional shape on its events and in the legend: circle, square, triangle,
 #          diamond, star, ring, cross, heart, or an emoji such as "🎓"
 #          (helps when colours are hard to tell apart)
@@ -49,6 +51,11 @@ calendars:
   family:
     name: Family
     url: ${ICLOUD_FAMILY_ICS}
+  office_hours:                         # a Glimpse calendar (made on My calendars)
+    name: Office hours
+    url: local-calendars/office_hours.ics
+    local: true
+    share: false
 
 # ---------------------------------------------------------------------------
 # Per-event overrides. These only ever REDUCE detail, for every audience.
@@ -141,6 +148,12 @@ audiences:
       days_ahead: 14                    # how far ahead open times are offered
       step_minutes: 30                  # start times every 15, 30 or 60 minutes
       message: "Meetings are on Zoom unless we say otherwise."
+      auto_confirm: false               # true: picked open times are booked straight away
+      calendar: office_hours            # a Glimpse calendar that confirmed meetings are added to
+      meeting_link: https://zoom.us/j/1234567890  # shown only once a meeting is confirmed
+      location: null                    # or a room / address
+      booking: false                    # a public booking page with its own link
+      booking_slug: null                # the panel makes one when you switch it on
     widget:                             # optional: free/busy view to embed in a website
       enabled: false
       slug: ${GLIMPSE_AUD_COWORKERS_WIDGET_SLUG}  # its own link (the panel makes one)

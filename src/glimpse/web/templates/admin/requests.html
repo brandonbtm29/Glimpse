@@ -42,9 +42,18 @@
     {% if r.status == 'pending' %}
     <form method="post" action="/requests/{{ r.id }}/answer" class="form req-answer">
       <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="grid2 tight">
+        <label><span>Meeting link <span class="muted">(Zoom, Teams, Meet…)</span></span>
+          <input type="url" name="meeting_link" value="{{ row.defaults.meeting_link or '' if row.defaults else '' }}" placeholder="https://…" spellcheck="false">
+        </label>
+        <label><span>Or where <span class="muted">(optional)</span></span>
+          <input type="text" name="location" value="{{ row.defaults.location or '' if row.defaults else '' }}" maxlength="200" placeholder="Room 301">
+        </label>
+      </div>
       <label><span>Message to them <span class="muted">(optional)</span></span>
-        <textarea name="reply" rows="2" maxlength="1000" placeholder="Looking forward to it. Here's the Zoom link: ..."></textarea>
+        <textarea name="reply" rows="2" maxlength="1000" placeholder="Looking forward to it!"></textarea>
       </label>
+      {% if row.defaults and row.defaults.calendar %}<p class="hint">Accepting adds it to your <strong>{{ cfg.calendars[row.defaults.calendar].name }}</strong> Glimpse calendar.</p>{% endif %}
       <div class="actions">
         <button type="submit" name="action" value="accept">Accept</button>
         <button type="submit" name="action" value="decline" class="secondary">Decline</button>
@@ -81,9 +90,17 @@
       <tr id="r-{{ r.id }}">
         <td><strong>{{ r.name }}</strong><div class="muted small">{{ row.aud }}</div></td>
         <td>{{ row.when }}</td>
-        <td><span class="status {{ 'ok' if r.status == 'accepted' else 'bad' if r.status == 'declined' else '' }}">{{ {'accepted': 'Accepted', 'declined': 'Declined', 'cancelled': 'Cancelled'}[r.status] }}</span></td>
+        <td><span class="status {{ 'ok' if r.status == 'accepted' else 'bad' if r.status == 'declined' else '' }}">{{ {'accepted': 'Accepted', 'declined': 'Declined', 'cancelled': 'Cancelled'}[r.status] }}</span>
+          {% if r.status == 'accepted' and row.cal_name %}<div class="muted small">On {{ row.cal_name }}</div>{% endif %}
+          {% if r.status == 'accepted' and r.link %}<div class="small"><a href="{{ r.link }}" target="_blank" rel="noopener">Meeting link</a></div>{% endif %}</td>
         <td class="right">
-          {% if r.status == 'accepted' and not row.past %}<a class="button secondary small" href="/requests/{{ r.id }}/invite.ics" download>Add to my calendar</a>{% endif %}
+          {% if r.status == 'accepted' and not row.past %}
+          {% if not row.cal_name %}<a class="button secondary small" href="/requests/{{ r.id }}/invite.ics" download>Add to my calendar</a>{% endif %}
+          <form method="post" action="/requests/{{ r.id }}/answer" class="inline-form" data-confirm="Cancel this meeting with {{ r.name }}?{{ " They'll get an email." if can_email else "" }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" name="action" value="cancel" class="link danger small">Cancel meeting</button>
+          </form>
+          {% endif %}
           <form method="post" action="/requests/{{ r.id }}/delete" class="inline-form">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button type="submit" class="link small">Remove</button>

@@ -161,7 +161,7 @@
 
 <section class="panel" id="requests">
   <div class="panelhead"><h2>Meeting requests</h2>{% if aud.requests.enabled %}<a href="/requests">See requests &rarr;</a>{% endif %}</div>
-  <p class="muted">Let people on this page ask for a meeting: they pick one of your open times or suggest one, and you accept, decline or propose another time. Nothing is added to your calendars until you accept and add it yourself.</p>
+  <p class="muted">Let people on this page ask for a meeting: they pick one of your open times or suggest one. You approve each one, or let open times be booked straight away. Confirmed meetings can go onto a Glimpse calendar automatically, with your Zoom or Teams link.</p>
   {% if aud.requests.enabled and not channels %}<p class="notice">You won't be told about new requests until you switch on a <a href="/notifications">notification</a> (phone, email or Discord). They'll still wait on the <a href="/requests">Requests</a> page.</p>{% endif %}
   <form method="post" action="/audiences/{{ aid }}/requests" class="form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -201,9 +201,41 @@
         <select name="step_minutes">{% for st in [15, 30, 60] %}<option value="{{ st }}" {% if r.step_minutes == st %}selected{% endif %}>{{ st }} minutes</option>{% endfor %}</select>
       </label>
     </div>
+    <fieldset class="checks">
+      <legend>When they pick an open time</legend>
+      <label class="check"><input type="radio" name="auto_confirm" value="off" {% if not r.auto_confirm %}checked{% endif %}> I approve each request</label>
+      <label class="check"><input type="radio" name="auto_confirm" value="on" {% if r.auto_confirm %}checked{% endif %}> Book it straight away <span class="muted">(suggested times still wait for you)</span></label>
+    </fieldset>
+    <div class="grid2">
+      <label><span>Add confirmed meetings to</span>
+        <select name="calendar">
+          <option value="">Nowhere (I'll add them myself)</option>
+          {% for cid, c in local_cals %}<option value="{{ cid }}" {% if r.calendar == cid %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        </select>
+        <span class="hint">{% if local_cals %}A Glimpse calendar, so meetings show up on your pages and your phone.{% else %}Make a Glimpse calendar on <a href="/my-calendars">My calendars</a> first.{% endif %}</span>
+      </label>
+      <label><span>Meeting link <span class="muted">(optional)</span></span>
+        <input type="url" name="meeting_link" value="{{ r.meeting_link or '' }}" placeholder="https://zoom.us/j/… or a Teams link" spellcheck="false">
+        <span class="hint">Your personal Zoom room, a standing Teams meeting or a Google Meet link. Only shown once a meeting is confirmed. You can change it per meeting.</span>
+      </label>
+      <label><span>Or where <span class="muted">(optional)</span></span>
+        <input type="text" name="location" value="{{ r.location or '' }}" maxlength="200" placeholder="My office, room 301">
+      </label>
+    </div>
     <label><span>Note shown above the form <span class="muted">(optional)</span></span>
       <textarea name="message" rows="2" maxlength="500" placeholder="Happy to chat about the lab or projects. Meetings are on Zoom unless we say otherwise.">{{ r.message or '' }}</textarea>
     </label>
+    <fieldset class="checks">
+      <legend>Booking page</legend>
+      <label class="check"><input type="checkbox" name="booking" {% if r.booking %}checked{% endif %}> Also offer a public booking page <span class="muted">(its own link, no password, shows only open times: for an email signature or website)</span></label>
+      {% if r.booking and booking_url %}
+      <div class="copyrow">
+        <input type="text" readonly value="{{ booking_url }}" aria-label="Booking page link">
+        <button type="button" class="secondary small" data-copy="{{ booking_url }}">Copy</button>
+        <button type="submit" name="action" value="rotate_booking" class="secondary small" data-confirm="Make a new booking link? The old one will stop working.">New link</button>
+      </div>
+      {% endif %}
+    </fieldset>
     <p class="hint">Open times are worked out from <em>all</em> your calendars, so people who can request see when you're free across all of them (never what's on them). Adjust which calendars count on the <a href="/requests#availability">Requests</a> page.</p>
     <div class="actions"><button type="submit">Save meeting requests</button></div>
   </form>

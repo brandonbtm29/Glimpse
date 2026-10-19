@@ -25,7 +25,7 @@
         <td><span class="dot" style="--ev: {{ f.color }}"></span><strong>{{ f.cal.name }}</strong>{% if f.cal.marker %} <span class="mk-admin" style="--ev: {{ f.color }}" title="{{ f.cal.marker }}">{{ marker_glyph(f.cal.marker) }}</span>{% endif %}</td>
         {% if cfg.groups %}<td class="muted">{{ cfg.groups[f.group].name if f.group else '–' }}</td>{% endif %}
         <td class="muted">{{ f.cal.label or '–' }}</td>
-        <td class="mono muted">{{ f.provider }} · {{ f.masked }}</td>
+        <td class="mono muted">{% if f.cal.local %}<a href="/my-calendars/{{ f.id }}">Glimpse calendar · edit events</a>{% else %}{{ f.provider }} · {{ f.masked }}{% endif %}</td>
         <td>{% if f.status == 'ok' %}<span class="status ok">OK</span>{% elif f.status == 'error' %}<span class="status bad" title="{{ f.error }}">Problem</span>{% else %}<span class="status wait">Waiting</span>{% endif %}</td>
         <td class="num">{{ f.count }}</td>
         <td class="right"><a class="button secondary small" href="/calendars/{{ f.id }}">Edit</a></td>

@@ -41,9 +41,13 @@
       <span class="hint">Audiences use the group's level unless you set this calendar on its own.</span>
     </label>
     {% endif %}
+    {% if row.cal.local %}
+    <p class="hint span2">A Glimpse calendar. <a href="/my-calendars/{{ row.id }}">Add and edit its events</a>.</p>
+    {% else %}
     <label><span>Replace feed link <span class="muted">(leave blank to keep)</span></span>
       <input type="text" name="url" value="" placeholder="Paste a new link only if it changed" autocomplete="off" spellcheck="false">
     </label>
+    {% endif %}
     <div class="actions span2"><button type="submit">Save</button></div>
   </form>
 </section>

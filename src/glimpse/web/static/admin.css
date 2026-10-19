@@ -333,3 +333,8 @@ button.link.danger { color: #c93a5c; background: none; }
 .small-head { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 14px 0 4px; }
 .support-note { border-left: 3px solid #2f9e63; }
 .support-line { margin-top: 18px; }
+.grid2.tight { margin-bottom: 8px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 14px; margin: 8px 0 12px; }
+@media (max-width: 700px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.event-form:has(input[name=all_day]:checked) .timed { visibility: hidden; }
+.events-table tr.past { opacity: 0.55; }

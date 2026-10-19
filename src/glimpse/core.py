@@ -88,6 +88,11 @@ class Glimpse:
     def today(self) -> date:
         return datetime.now(self.cfg.tz).date()
 
+    def reload_local(self, calendar_id: str) -> None:
+        """Re-read a Glimpse calendar's file after it was edited."""
+        if calendar_id in self.cfg.calendars:
+            self.cache.refresh(calendar_id, None)
+
     def now(self) -> datetime:
         """The current moment (tests pin it, like :meth:`today`)."""
         return datetime.now(UTC)

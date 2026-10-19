@@ -32,7 +32,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
-from .. import __version__, autostart, tailscale, updates
+from .. import __version__, autostart, bookings, localcal, tailscale, updates
 from ..availability import busy_times, is_free
 from ..config import (
     EMOJI_MARKERS,
@@ -51,7 +51,7 @@ from ..config import (
 )
 from ..core import add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..events import parse_events
-from ..notify import CHANNELS, Note, invite_ics
+from ..notify import CHANNELS, Note
 from ..policy import rule_matches
 from ..render.periods import build_heat, build_month
 from ..render.week import PALETTE_SIZE, build_week, fmt_day, fmt_range, fmt_time
@@ -127,6 +127,14 @@ FLASH = {
     "recolored": "Every calendar now has its own colour.",
     "rules_suggested": "Suggested rules added. Turn off or edit any that don't fit.",
     "req_accepted": "Accepted. Use \u201cAdd to my calendar\u201d so it shows up on your calendars too.",
+    "req_booked": "Accepted and added to your Glimpse calendar.",
+    "mycal_added": "Calendar created. Add events below; it already works like your other calendars.",
+    "mycal_deleted": "Calendar removed. Its file was kept in local-calendars/deleted in case you need it.",
+    "event_added": "Event added.",
+    "event_saved": "Event saved.",
+    "event_deleted": "Event deleted.",
+    "event_skipped": "That date was removed from the series.",
+    "req_cancelled": "Meeting cancelled and taken off your Glimpse calendar.",
     "req_declined": "Declined.",
     "req_countered": "New time sent. You'll hear back when they answer.",
     "req_removed": "Request removed from the list.",
@@ -476,8 +484,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                     "error": st.last_error if st else None,
                     "updated": st.last_success.astimezone(c.tz) if st and st.last_success else None,
                     "count": sum(1 for ev in events if ev.calendar_id == cid),
-                    "masked": mask_url(cal.url),
-                    "provider": provider_of(cal.url),
+                    "masked": "local-calendars" if cal.local else mask_url(cal.url),
+                    "provider": "Glimpse calendar" if cal.local else provider_of(cal.url),
                     "group": c.group_of(cid),
                 }
             )
@@ -927,7 +935,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node.pop("label", None)
             if v["color"]:
                 node["color"] = v["color"]
-            if v["url"]:
+            if v["url"] and not node.get("local"):
                 d.set_secret(node, "url", v["url"], _env_name("CAL", cid, "URL"))
             if v["marker"]:
                 node["marker"] = v["marker"]
@@ -949,7 +957,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         sess, _ = await checked_form(request)
         if not sess:
             return to_login()
+        cal = cfg().calendars.get(cid)
+        path = Path(cal.url) if cal and cal.local else None
         await save(lambda d: d.remove_calendar(cid))
+        if path:
+            await run_in_threadpool(localcal.retire, path)
         return done("/calendars", "cal_deleted")
 
     def used_colors() -> set[str]:
@@ -1198,6 +1210,10 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "view_help": VIEW_HELP,
                 "zones": sorted({*COMMON_ZONES, cfg().timezone, *([aud.timezone] if aud.timezone else [])}),
                 "lengths": REQUEST_LENGTHS,
+                "local_cals": [(cid, c) for cid, c in cfg().calendars.items() if c.local],
+                "booking_url": f"{cfg().server.base_url.rstrip('/')}/b/{aud.requests.booking_slug}"
+                if aud.requests.booking_slug
+                else None,
                 "widget_url": widget_link(aud),
                 "embed": embed_code(aud),
                 "channels": rt.notifier.enabled(),
@@ -1832,6 +1848,10 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "when": req_when(r),
                 "counter": req_when(r, True) if r.counter_start else None,
                 "aud": aud.title if aud else "(removed audience)",
+                "defaults": aud.requests if aud else None,
+                "cal_name": c.calendars[r.calendar].name
+                if r.calendar and r.calendar in c.calendars
+                else None,
                 "via": person.name
                 if person
                 else ("website widget" if r.viewer.startswith("w:") else "shared link"),
@@ -1884,10 +1904,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return f"{fmt_day(s.date())}, {fmt_time(s)} – {fmt_time(e)} ({s.tzname()})"
 
     def owner_invite(r: MeetingRequest) -> str:
-        desc = f"Requested by {r.name} <{r.email}> through Glimpse."
-        if r.note:
-            desc += f"\n\n{r.note}"
-        return invite_ics(f"glimpse-{r.id}@glimpse", r.start_dt, r.end_dt, f"Meeting with {r.name}", desc)
+        return bookings.owner_invite(r)
 
     @app.post("/requests/{rid}/answer", response_class=HTMLResponse)
     async def request_answer(request: Request, rid: str):
@@ -1902,18 +1919,32 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         sign = f"\n\n{reply}\n" if reply else "\n"
         link = requester_status_link(r)
         if action == "accept":
-            rt.requests.change(rid, "accepted", reply=reply)
-            invite = invite_ics(
-                f"glimpse-{r.id}@glimpse", r.start_dt, r.end_dt, f"Meeting with {owner_first()}", r.note
+            meet = str(form.get("meeting_link", "")).strip()[:500]
+            place = str(form.get("location", "")).strip()[:200]
+            if meet and not re.fullmatch(r"https?://\S+", meet):
+                return requests_page(request, sess, "The meeting link should start with https://", 400)
+            r = await run_in_threadpool(
+                bookings.confirm, rt.glimpse, rt.requests, r, "accepted", meet, place, reply=reply
             )
+            more = bookings.details(r, include_note=False)
             rt.notifier.requester(
                 r.email,
                 f"Confirmed: meeting with {owner_first()}",
                 f"Hi {r.name},\n\n{owner_first()} accepted your meeting request:\n{requester_when(r)}\n"
-                f"{sign}\nThe attached file adds it to your calendar. Details: {link}\n",
-                ics=invite,
+                + (f"\n{more}\n" if more else "")
+                + f"{sign}\nThe attached file adds it to your calendar. Details: {link}\n",
+                ics=bookings.requester_invite(cfg(), r),
             )
-            return done(f"/requests#r-{rid}", "req_accepted")
+            return done(f"/requests#r-{rid}", "req_booked" if r.calendar else "req_accepted")
+        if action == "cancel" and r.status == "accepted":
+            await run_in_threadpool(bookings.cancel, rt.glimpse, rt.requests, r, "by you")
+            rt.notifier.requester(
+                r.email,
+                f"Cancelled: meeting with {owner_first()}",
+                f"Hi {r.name},\n\n{owner_first()} had to cancel the meeting on {requester_when(r)}.{sign}\n"
+                f"Details: {link}\n",
+            )
+            return done("/requests", "req_cancelled")
         if action == "decline":
             rt.requests.change(rid, "declined", reply=reply)
             rt.notifier.requester(
@@ -2011,6 +2042,12 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             errors.append("Offer at least one meeting length.")
         if own_hours and (not days or not (_TIME.match(start) and _TIME.match(end))):
             errors.append("Pick the days and times people can book, like 09:00 to 17:00.")
+        meet = str(form.get("meeting_link", "")).strip()[:500]
+        if meet and not re.fullmatch(r"https?://\S+", meet):
+            errors.append("The meeting link should start with https://")
+        target = str(form.get("calendar", "")).strip()
+        if target and not (target in cfg().calendars and cfg().calendars[target].local):
+            target = ""
 
         def num(name: str, dflt: int, lo: int, hi: int) -> int:
             try:
@@ -2044,12 +2081,26 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             else:
                 req.pop("hours", None)
             node["requests"] = req
+            req["auto_confirm"] = form.get("auto_confirm") == "on"
+            for key, val in (("calendar", target), ("meeting_link", meet)):
+                if val:
+                    req[key] = val
+                else:
+                    req.pop(key, None)
+            place = str(form.get("location", "")).strip()[:200]
+            if place:
+                req["location"] = place
+            else:
+                req.pop("location", None)
+            d.set_booking(aid, form.get("booking") == "on", rotate=form.get("action") == "rotate_booking")
 
         try:
             await save(mutate)
         except ConfigError as exc:
             return audience_page(request, sess, aid, str(exc), 400)
-        return done(f"/audiences/{aid}#requests", "saved")
+        return done(
+            f"/audiences/{aid}#requests", "rotated" if form.get("action") == "rotate_booking" else "saved"
+        )
 
     @app.post("/audiences/{aid}/widget", response_class=HTMLResponse)
     async def audience_widget(request: Request, aid: str):
@@ -2385,6 +2436,324 @@ def create_admin_app(rt: Runtime) -> FastAPI:
 
         await save(mutate)
         return done("/school#terms", "saved")
+
+    # -- Glimpse calendars ("My calendars") -----------------------------------------------------
+
+    def local_path(cid: str) -> Path:
+        return Path(cfg().calendars[cid].url)
+
+    def is_local_cal(cid: str) -> bool:
+        cal = cfg().calendars.get(cid)
+        return bool(cal and cal.local)
+
+    def ev_when(ev: localcal.LocalEvent) -> str:
+        if ev.all_day:
+            last = ev.end - timedelta(days=1)
+            day = fmt_day(ev.start)
+            return f"{day}, all day" if last == ev.start else f"{day} – {fmt_day(last)}, all day"
+        if ev.start.date() == ev.end.date():
+            return f"{fmt_day(ev.start.date())}, {fmt_time(ev.start)} – {fmt_time(ev.end)}"
+        return (
+            f"{fmt_day(ev.start.date())} {fmt_time(ev.start)} – {fmt_day(ev.end.date())} {fmt_time(ev.end)}"
+        )
+
+    def my_calendars_rows() -> list[dict]:
+        rows = []
+        today = rt.glimpse.today()
+        for i, (cid, cal) in enumerate(cfg().calendars.items()):
+            if not cal.local:
+                continue
+            evs = localcal.events(local_path(cid), cfg().tz)
+            rows.append(
+                {
+                    "id": cid,
+                    "cal": cal,
+                    "color": cal.color or PALETTE_HEX[i % PALETTE_SIZE],
+                    "count": len(evs),
+                    "upcoming": sum(1 for e in evs if e.repeat != "none" or e.start_day >= today),
+                    "share_url": share_link(cid) if cal.share else None,
+                }
+            )
+        return rows
+
+    def share_link(cid: str) -> str | None:
+        cal = cfg().calendars[cid]
+        if not cal.share_slug:
+            return None
+        return f"{cfg().server.base_url.rstrip('/')}/cal/{cal.share_slug}.ics"
+
+    @app.get("/my-calendars", response_class=HTMLResponse)
+    def my_calendars(request: Request):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        return page(
+            request,
+            "admin/my_calendars.html",
+            {"rows": my_calendars_rows(), "color": next_color()},
+            sess,
+        )
+
+    @app.post("/my-calendars/add")
+    async def my_calendar_add(request: Request):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        name = str(form.get("name", "")).strip()[:60]
+        if not name:
+            return done("/my-calendars", "saved")
+        color = str(form.get("color", "")).strip() or None
+        box: dict[str, str] = {}
+
+        def mutate(d: Draft) -> None:
+            box["id"] = d.add_local_calendar(name, color)
+
+        path_holder: dict[str, Path] = {}
+
+        def mutate_and_create(d: Draft) -> None:
+            mutate(d)
+            path_holder["p"] = store.config_path.parent / localcal.FOLDER / f"{box['id']}.ics"
+            localcal.create(path_holder["p"], name)
+
+        await save(mutate_and_create)
+        return done(f"/my-calendars/{box['id']}", "mycal_added")
+
+    def event_from_form(
+        form, uid: str = "", source: str = ""
+    ) -> tuple[localcal.LocalEvent | None, str | None]:
+        tz = cfg().tz
+        title = str(form.get("title", "")).strip()[:200]
+        if not title:
+            return None, "Give the event a title."
+        all_day = form.get("all_day") == "on"
+        d1, d2 = (
+            str(form.get("start_date", "")),
+            str(form.get("end_date", "")) or str(form.get("start_date", "")),
+        )
+        if not (_DATE.match(d1) and _DATE.match(d2)):
+            return None, "Pick the day(s) for the event."
+        sd, ed = date.fromisoformat(d1), date.fromisoformat(d2)
+        if all_day:
+            if ed < sd:
+                return None, "The last day can't be before the first."
+            start: Any = sd
+            end: Any = ed + timedelta(days=1)
+        else:
+            t1, t2 = str(form.get("start_time", "")), str(form.get("end_time", ""))
+            if not (_TIME.match(t1) and _TIME.match(t2)):
+                return None, "Add a start and end time, like 09:00 and 10:00."
+            h1, m1 = (int(x) for x in t1.split(":"))
+            h2, m2 = (int(x) for x in t2.split(":"))
+            start = datetime(sd.year, sd.month, sd.day, h1, m1, tzinfo=tz)
+            end = datetime(ed.year, ed.month, ed.day, h2, m2, tzinfo=tz)
+            if end <= start:
+                return None, "The event has to end after it starts."
+        repeat = str(form.get("repeat", "none"))
+        if repeat not in localcal.REPEATS:
+            repeat = "none"
+        until_s = str(form.get("until", ""))
+        until = date.fromisoformat(until_s) if repeat != "none" and _DATE.match(until_s) else None
+        if until and until < sd:
+            return None, "A repeat can't end before the event starts."
+        return (
+            localcal.LocalEvent(
+                uid=uid,
+                title=title,
+                start=start,
+                end=end,
+                all_day=all_day,
+                location=str(form.get("location", "")).strip()[:300],
+                notes=str(form.get("notes", "")).strip()[:4000],
+                repeat=repeat,
+                until=until,
+                free=form.get("free") == "on",
+                private=form.get("private") == "on",
+                source=source,
+            ),
+            None,
+        )
+
+    def local_calendar_page(request, sess, cid, error=None, status=200, values=None):
+        c = cfg()
+        tz = c.tz
+        today = rt.glimpse.today()
+        show_past = request.query_params.get("past") == "1"
+        evs = localcal.events(local_path(cid), tz)
+        rows = []
+        for ev in evs:
+            last = ev.until or (ev.end if ev.all_day else ev.end.date()) if ev.repeat != "none" else None
+            done_already = (
+                ev.repeat == "none" and (ev.end - timedelta(days=1) if ev.all_day else ev.end.date()) < today
+            )
+            if ev.repeat != "none" and ev.until and ev.until < today:
+                done_already = True
+            if done_already and not show_past:
+                continue
+            rows.append(
+                {
+                    "ev": ev,
+                    "when": ev_when(ev),
+                    "repeat": localcal.REPEATS.get(ev.repeat, "Repeats"),
+                    "past": done_already,
+                    "last": last,
+                }
+            )
+        users = [a.title for a in c.audiences.values() if a.requests.calendar == cid]
+        return page(
+            request,
+            "admin/local_calendar.html",
+            {
+                "cid": cid,
+                "cal": c.calendars[cid],
+                "rows": rows,
+                "hidden_past": sum(1 for e in evs) - len(rows) if not show_past else 0,
+                "show_past": show_past,
+                "repeats": localcal.REPEATS,
+                "share_url": share_link(cid) if c.calendars[cid].share else None,
+                "values": values
+                or {"start_date": today.isoformat(), "start_time": "09:00", "end_time": "10:00"},
+                "booking_audiences": users,
+                "error": error,
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/my-calendars/{cid}", response_class=HTMLResponse)
+    def local_calendar(request: Request, cid: str):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        if not is_local_cal(cid):
+            return RedirectResponse("/my-calendars", status_code=303)
+        return local_calendar_page(request, sess, cid)
+
+    @app.post("/my-calendars/{cid}/events", response_class=HTMLResponse)
+    async def local_event_add(request: Request, cid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if not is_local_cal(cid):
+            return RedirectResponse("/my-calendars", status_code=303)
+        ev, err = event_from_form(form)
+        if err:
+            return local_calendar_page(request, sess, cid, err, 400, values=dict(form))
+        await run_in_threadpool(localcal.save, local_path(cid), ev, cfg().tz)
+        rt.glimpse.reload_local(cid)
+        return done(f"/my-calendars/{cid}", "event_added")
+
+    def local_event_page(request, sess, cid, uid, error=None, status=200, values=None):
+        ev = localcal.get(local_path(cid), uid, cfg().tz)
+        if ev is None:
+            return RedirectResponse(f"/my-calendars/{cid}", status_code=303)
+        upcoming = []
+        if ev.repeat != "none":
+            tz = cfg().tz
+            s = datetime.combine(rt.glimpse.today(), datetime.min.time(), tzinfo=tz)
+            text = local_path(cid).read_text(encoding="utf-8")
+            occ = [o for o in parse_events(cid, text, s, s + timedelta(days=400), tz) if o.uid == uid]
+            upcoming = [o.start.date() for o in occ[:12]]
+        if values is None:
+            last = ev.end - timedelta(days=1) if ev.all_day else ev.end.date()
+            values = {
+                "title": ev.title,
+                "all_day": "on" if ev.all_day else "",
+                "start_date": ev.start_day.isoformat(),
+                "end_date": (last if ev.all_day else ev.end.date()).isoformat(),
+                "start_time": "" if ev.all_day else ev.start.strftime("%H:%M"),
+                "end_time": "" if ev.all_day else ev.end.strftime("%H:%M"),
+                "location": ev.location,
+                "notes": ev.notes,
+                "repeat": ev.repeat,
+                "until": ev.until.isoformat() if ev.until else "",
+                "free": "on" if ev.free else "",
+                "private": "on" if ev.private else "",
+            }
+        return page(
+            request,
+            "admin/local_event.html",
+            {
+                "cid": cid,
+                "cal": cfg().calendars[cid],
+                "ev": ev,
+                "values": values,
+                "repeats": localcal.REPEATS,
+                "upcoming": upcoming,
+                "error": error,
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/my-calendars/{cid}/events/{uid}", response_class=HTMLResponse)
+    def local_event(request: Request, cid: str, uid: str):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        if not is_local_cal(cid):
+            return RedirectResponse("/my-calendars", status_code=303)
+        return local_event_page(request, sess, cid, uid)
+
+    @app.post("/my-calendars/{cid}/events/{uid}", response_class=HTMLResponse)
+    async def local_event_save(request: Request, cid: str, uid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if not is_local_cal(cid):
+            return RedirectResponse("/my-calendars", status_code=303)
+        old = localcal.get(local_path(cid), uid, cfg().tz)
+        if old is None:
+            return RedirectResponse(f"/my-calendars/{cid}", status_code=303)
+        ev, err = event_from_form(form, uid=uid, source=old.source)
+        if err:
+            return local_event_page(request, sess, cid, uid, err, 400, values=dict(form))
+        await run_in_threadpool(localcal.save, local_path(cid), ev, cfg().tz)
+        rt.glimpse.reload_local(cid)
+        return done(f"/my-calendars/{cid}", "event_saved")
+
+    @app.post("/my-calendars/{cid}/events/{uid}/delete")
+    async def local_event_delete(request: Request, cid: str, uid: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if is_local_cal(cid):
+            await run_in_threadpool(localcal.delete, local_path(cid), uid)
+            rt.glimpse.reload_local(cid)
+        return done(f"/my-calendars/{cid}", "event_deleted")
+
+    @app.post("/my-calendars/{cid}/events/{uid}/skip")
+    async def local_event_skip(request: Request, cid: str, uid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        day = str(form.get("day", ""))
+        if is_local_cal(cid) and _DATE.match(day):
+            await run_in_threadpool(localcal.skip, local_path(cid), uid, date.fromisoformat(day), cfg().tz)
+            rt.glimpse.reload_local(cid)
+        return done(f"/my-calendars/{cid}/events/{uid}", "event_skipped")
+
+    @app.post("/my-calendars/{cid}/share")
+    async def local_calendar_share(request: Request, cid: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if not is_local_cal(cid):
+            return RedirectResponse("/my-calendars", status_code=303)
+        action = str(form.get("action", ""))
+        await save(lambda d: d.set_calendar_share(cid, action in ("on", "rotate"), rotate=action == "rotate"))
+        return done(f"/my-calendars/{cid}#share", "rotated" if action == "rotate" else "saved")
+
+    @app.post("/my-calendars/{cid}/delete")
+    async def local_calendar_delete(request: Request, cid: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if not is_local_cal(cid):
+            return RedirectResponse("/my-calendars", status_code=303)
+        path = local_path(cid)
+        await save(lambda d: d.remove_calendar(cid))
+        await run_in_threadpool(localcal.retire, path)
+        return done("/my-calendars", "mycal_deleted")
 
     # -- support --------------------------------------------------------------------------------
 

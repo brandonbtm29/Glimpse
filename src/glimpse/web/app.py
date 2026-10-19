@@ -23,11 +23,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from .. import __version__
+from .. import __version__, bookings
 from ..availability import busy_blocks_for_days, busy_times, fits_rules, is_free, open_slots, request_range
 from ..config import AppConfig, AudienceCfg, Level
 from ..core import Glimpse, add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
-from ..notify import Note, Notifier, invite_ics
+from ..notify import Note, Notifier
 from ..render.ics import to_ics
 from ..render.periods import build_heat, build_month
 from ..render.week import DAY_NAMES, build_week, fmt_day, fmt_time
@@ -419,7 +419,7 @@ def create_app(
             "max_day": (latest - timedelta(seconds=1)).astimezone(tz).date().isoformat(),
             "error": None,
             "values": {},
-            "back": asker.base if not asker.key.startswith("w:") else None,
+            "back": asker.base if not asker.key.startswith(("w:", "b:")) else None,
             "zones": sorted({*COMMON_ZONES, g.cfg.timezone, tz.key}),
         }
         base_ctx.update(ctx)
@@ -518,6 +518,27 @@ def create_app(
         )
         if note:
             body += f"\n“{note[:300]}”"
+        if aud.requests.auto_confirm and kind == "slot":
+            item = bookings.confirm(g, reqs, item, "booked instantly")
+            extra = f"\nAdded to {g.cfg.calendars[item.calendar].name}." if item.calendar else ""
+            notes.owner(
+                Note(
+                    title="New meeting booked",
+                    body=body + extra,
+                    url=f"{panel_url()}/requests#r-{item.id}",
+                    tags="white_check_mark",
+                )
+            )
+            notes.requester(
+                email,
+                f"Confirmed: meeting with {owner_name()}",
+                f"Hi {name},\n\nYour meeting with {owner_name()} is booked:\n{when_text(start, end, tz)}\n"
+                + (f"\n{bookings.details(item, include_note=False)}\n" if item.link or item.location else "")
+                + "\nThe attached file adds it to your calendar. To see it again or cancel:\n"
+                f"{status_link(item)}\n",
+                ics=bookings.requester_invite(g.cfg, item),
+            )
+            return RedirectResponse(f"/req/{item.token}?sent=1", status_code=303)
         notes.owner(Note(title="New meeting request", body=body, url=f"{panel_url()}/requests#r-{item.id}"))
         notes.requester(
             email,
@@ -574,7 +595,7 @@ def create_app(
             return status_page(request, item, tz, "This page was open too long. Please try again.", 400)
         who = item.name
         if action == "cancel" and item.status in ("pending", "countered", "accepted"):
-            reqs.change(item.id, "cancelled", "by requester")
+            bookings.cancel(g, reqs, item, "by requester")
             notes.owner(
                 Note(
                     title="Meeting request cancelled",
@@ -589,20 +610,21 @@ def create_app(
             and item.counter_start
             and item.counter_end
         ):
-            reqs.change(
-                item.id,
-                "accepted",
+            item = bookings.confirm(
+                g,
+                reqs,
+                item,
                 "new time accepted",
                 start=item.counter_start,
                 end=item.counter_end,
                 counter_start=None,
                 counter_end=None,
             )
+            where = f" Added to {g.cfg.calendars[item.calendar].name}." if item.calendar else ""
             notes.owner(
                 Note(
                     title="New time accepted",
-                    body=f"{who} accepted {when_text(item.start_dt, item.end_dt, g.cfg.tz)}. "
-                    "Add it to your calendar.",
+                    body=f"{who} accepted {when_text(item.start_dt, item.end_dt, g.cfg.tz)}.{where}",
                     url=f"{panel_url()}/requests#r-{item.id}",
                     tags="white_check_mark",
                 )
@@ -624,13 +646,7 @@ def create_app(
         item = reqs.by_token(token)
         if item is None or item.status != "accepted":
             return not_found(request)
-        body = invite_ics(
-            f"glimpse-{item.id}@glimpse",
-            item.start_dt,
-            item.end_dt,
-            f"Meeting with {owner_name()}",
-            item.note,
-        )
+        body = bookings.requester_invite(g.cfg, item)
         return Response(
             body,
             media_type="text/calendar; charset=utf-8",
@@ -692,6 +708,49 @@ def create_app(
             return not_found(request)
         aid, aud = found
         return await submit_request(request, Asker(aid, aud, f"/w/{wslug}", f"w:{aid}"))
+
+    def booking_audience(bslug: str) -> tuple[str, AudienceCfg] | None:
+        found = None
+        for aid, aud in g.cfg.audiences.items():
+            r = aud.requests
+            if r.enabled and r.booking and r.booking_slug:
+                if hmac.compare_digest(r.booking_slug.encode(), bslug.encode()):
+                    found = (aid, aud)
+        return found
+
+    @app.get("/b/{bslug}", response_class=HTMLResponse)
+    def booking_page(request: Request, bslug: str, tz: str = "", len: int = 0):  # noqa: A002
+        found = booking_audience(bslug)
+        if found is None:
+            return not_found(request)
+        aid, aud = found
+        asker = Asker(aid, aud, f"/b/{bslug}", f"b:{aid}")
+        return request_page(request, asker, request_zone(request, asker, tz), len, {})
+
+    @app.post("/b/{bslug}", response_class=HTMLResponse)
+    async def booking_send(request: Request, bslug: str):
+        found = booking_audience(bslug)
+        if found is None:
+            return not_found(request)
+        aid, aud = found
+        return await submit_request(request, Asker(aid, aud, f"/b/{bslug}", f"b:{aid}"))
+
+    @app.get("/cal/{name}")
+    def shared_calendar(request: Request, name: str):
+        """A Glimpse calendar's own subscription link (full details, as its owner chose)."""
+        slug = name.removesuffix(".ics")
+        found = None
+        for cal in g.cfg.calendars.values():
+            if cal.local and cal.share and cal.share_slug:
+                if hmac.compare_digest(cal.share_slug.encode(), slug.encode()):
+                    found = cal
+        if found is None:
+            return not_found(request)
+        try:
+            body = Path(found.url).read_text(encoding="utf-8")
+        except OSError:
+            return not_found(request)
+        return Response(body, media_type="text/calendar; charset=utf-8")
 
     def viewer_asker(request: Request, kind: str, slug: str) -> Asker | Response:
         v = find(request, kind, slug)

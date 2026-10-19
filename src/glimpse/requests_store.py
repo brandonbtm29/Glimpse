@@ -45,6 +45,9 @@ class MeetingRequest:
     counter_end: str | None = None
     updated: str = ""
     history: list[str] = field(default_factory=list)
+    link: str = ""  # video meeting link (Zoom, Teams, Meet...), shared once confirmed
+    location: str = ""  # a room or address, shared once confirmed
+    calendar: str | None = None  # Glimpse calendar the confirmed meeting was added to
 
     @property
     def start_dt(self) -> datetime:

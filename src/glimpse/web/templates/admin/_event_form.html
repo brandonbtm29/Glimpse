@@ -1,0 +1,27 @@
+{# The fields for adding or editing a Glimpse-calendar event. `values` holds what to show. #}
+<div class="grid2">
+  <label class="span2">Title <input type="text" name="title" value="{{ values.title or '' }}" maxlength="200" required placeholder="Dinner with Alex"></label>
+</div>
+<label class="check"><input type="checkbox" name="all_day" {% if values.all_day %}checked{% endif %}> All day</label>
+<div class="grid4 when-grid">
+  <label>Starts <input type="date" name="start_date" value="{{ values.start_date or '' }}" required></label>
+  <label class="timed">at <input type="time" name="start_time" value="{{ values.start_time or '' }}" step="300"></label>
+  <label>Ends <input type="date" name="end_date" value="{{ values.end_date or values.start_date or '' }}"></label>
+  <label class="timed">at <input type="time" name="end_time" value="{{ values.end_time or '' }}" step="300"></label>
+</div>
+<div class="grid2">
+  <label>Repeats
+    <select name="repeat">
+      {% for key, label in repeats.items() %}<option value="{{ key }}" {% if (values.repeat or 'none') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label><span>Until <span class="muted">(optional)</span></span> <input type="date" name="until" value="{{ values.until or '' }}"></label>
+  <label><span>Where <span class="muted">(optional)</span></span> <input type="text" name="location" value="{{ values.location or '' }}" maxlength="300" placeholder="An address, a room or a meeting link"></label>
+</div>
+<label><span>Notes <span class="muted">(optional)</span></span>
+  <textarea name="notes" rows="3" maxlength="4000">{{ values.notes or '' }}</textarea>
+</label>
+<div class="checks">
+  <label class="check"><input type="checkbox" name="free" {% if values.free %}checked{% endif %}> Show as free <span class="muted">(doesn't block meeting times or show as Busy)</span></label>
+  <label class="check"><input type="checkbox" name="private" {% if values.private %}checked{% endif %}> Private <span class="muted">(everyone sees just &ldquo;Busy&rdquo;, if you keep that setting on)</span></label>
+</div>

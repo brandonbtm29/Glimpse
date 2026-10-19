@@ -24,6 +24,7 @@
     <nav class="sidenav" aria-label="Settings">
       <a href="/" {% if nav == 'overview' %}aria-current="page"{% endif %}>Overview</a>
       <a href="/calendars" {% if nav in ('calendars', 'calendar_edit') %}aria-current="page"{% endif %}>Calendars</a>
+      <a href="/my-calendars" {% if nav in ('my_calendars', 'local_calendar', 'local_event') %}aria-current="page"{% endif %}>My calendars</a>
       <a href="/sharing" {% if nav == 'sharing' %}aria-current="page"{% endif %}>Who sees what</a>
       {% for aid, a in cfg.audiences.items() %}
       <a class="sub" href="/audiences/{{ aid }}" {% if nav == 'audience' and aid_current == aid %}aria-current="page"{% endif %}>{{ a.title }}</a>

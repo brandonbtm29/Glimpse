@@ -8,6 +8,29 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-19
+
+### Added
+- **Glimpse calendars** (new **My calendars** page): make calendars right in Glimpse, with no
+  Google, Outlook or iCloud account. Add, edit and delete events: timed or all day, repeating
+  (daily, weekdays, weekly, every 2 weeks, monthly, yearly, with an end date), with a place,
+  notes, "show as free" and "private". Skip single dates of a repeating event. They work like any
+  calendar (detail levels, groups, rules, open times) and are plain .ics files in
+  `local-calendars/` beside your settings, included in update backups.
+- **Share a Glimpse calendar** with its own subscription link (full details) for your phone or
+  someone else's calendar app. Make a new link or stop sharing at any time.
+- **Instant booking**: per audience, picked open times can be booked straight away instead of
+  waiting for you. Suggested times still need your OK.
+- **Confirmed meetings go onto a Glimpse calendar** automatically, and come off it again when
+  either side cancels.
+- **Meeting links**: set your Zoom, Teams or Google Meet link (and/or a room) per audience, and
+  change it per meeting when you accept. It's shown only after a meeting is confirmed: on the
+  requester's page with a "Join the meeting" button, in the confirmation email and in the
+  calendar file.
+- **Public booking page**: a separate link per audience that shows only open times, with no
+  password, for an email signature or website.
+- **Cancel a confirmed meeting** from the Requests page; the other person is told by email.
+
 ## [0.5.1] - 2026-10-19
 
 ### Added
