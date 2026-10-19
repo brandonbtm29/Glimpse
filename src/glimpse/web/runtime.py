@@ -91,6 +91,7 @@ class Runtime:
                 await asyncio.to_thread(self.reload_if_changed)
                 await asyncio.to_thread(self.refresh)
                 await asyncio.to_thread(self.requests.prune)
+                await asyncio.to_thread(self.glimpse.video.keep_alive)
                 if self.cfg.updates.check and self.updates.due():
                     await asyncio.to_thread(self.updates.check, self.cfg.updates.repo)
             except Exception:

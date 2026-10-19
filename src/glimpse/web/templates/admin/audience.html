@@ -229,7 +229,7 @@
       <label class="check"><input type="checkbox" name="platform" value="{{ p }}" {% if p in r.platforms %}checked{% endif %}> {{ name }}
         {% if st == 'ready' %}<span class="status ok">Connected</span>{% elif st == 'off' %}<span class="muted">(not set up)</span>{% else %}<span class="status warn">Needs {{ 'signing in' if st == 'sign_in' else 'setting up' }}</span>{% endif %}</label>
       {% endfor %}
-      <p class="hint">People choose one of the ticked services when they ask (if you tick only one, it's used for everyone). Each confirmed meeting gets its own link, and cancelling removes the Zoom or Teams meeting. Set the services up on <a href="/video-calls">Video calls</a>; until one is connected it isn't offered.</p>
+      <p class="hint">People choose one of the ticked services when they ask (if you tick only one, it's used for everyone). Each confirmed meeting gets its own link, and cancelling removes the Zoom, Teams or Webex meeting. Set the services up on <a href="/video-calls">Video calls</a>; until one is connected it isn't offered.</p>
     </fieldset>
     <label><span>Note shown above the form <span class="muted">(optional)</span></span>
       <textarea name="message" rows="2" maxlength="500" placeholder="Happy to chat about the lab or projects. Meetings are on Zoom unless we say otherwise.">{{ r.message or '' }}</textarea>

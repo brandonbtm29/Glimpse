@@ -8,6 +8,19 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-19
+
+### Added
+- **Webex**: a new Webex meeting for each booking, deleted again if the booking is cancelled.
+  Connect it on **Video calls** with your own Webex integration and a one-time sign-in.
+- **Jitsi Meet**: a new room with a long random name for each booking, with nothing to set up.
+  Uses meet.jit.si by default, or your own (or your school's) Jitsi server.
+- Sign-ins for Google Meet, Teams and Webex are renewed about once a week, so they don't
+  expire when nobody books for a while.
+
+### Fixed
+- A garbled sentence in the Google Meet setup help on the Video calls page.
+
 ## [0.7.0] - 2026-10-19
 
 ### Added

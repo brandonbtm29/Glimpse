@@ -318,7 +318,7 @@ class RequestsCfg(_Strict):
     booking_slug: str | None = None
     # online-meeting services people can choose from; each booking gets a new meeting there
     # (set them up under video_calls). Empty: the fixed meeting_link, if any.
-    platforms: list[Literal["zoom", "teams", "google"]] = Field(default_factory=list)
+    platforms: list[Literal["zoom", "teams", "google", "webex", "jitsi"]] = Field(default_factory=list)
 
     @field_validator("calendar", "location")
     @classmethod
@@ -648,12 +648,43 @@ class TeamsCfg(_Strict):
         return v
 
 
+class WebexCfg(_Strict):
+    """Webex, through an integration you make at developer.webex.com and then sign in to."""
+
+    enabled: bool = False
+    client_id: str | None = None
+    client_secret: str | None = None  # keep in .env
+
+    @field_validator("client_id", "client_secret")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        v = _blank_none(v)
+        return v.strip() if v else v
+
+
+class JitsiCfg(_Strict):
+    """Jitsi Meet: a new room with a long random name for each meeting. Nothing to sign in to."""
+
+    enabled: bool = False
+    server: str = "https://meet.jit.si"  # or your own Jitsi server
+
+    @field_validator("server")
+    @classmethod
+    def _server(cls, v: str) -> str:
+        v = (v or "").strip().rstrip("/") or "https://meet.jit.si"
+        if not re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d+)?(/[A-Za-z0-9._~-]+)*", v):
+            raise ValueError("the Jitsi server should be an https:// address, like https://meet.jit.si")
+        return v
+
+
 class VideoCfg(_Strict):
     """Services that make a new online meeting, with its own link, for each booking."""
 
     zoom: ZoomCfg = Field(default_factory=ZoomCfg)
     teams: TeamsCfg = Field(default_factory=TeamsCfg)
     google: GoogleMeetCfg = Field(default_factory=GoogleMeetCfg)
+    webex: WebexCfg = Field(default_factory=WebexCfg)
+    jitsi: JitsiCfg = Field(default_factory=JitsiCfg)
 
 
 class AvailabilityCfg(_Strict):

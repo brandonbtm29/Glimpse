@@ -10,7 +10,7 @@
 {% endmacro %}
 {% macro tools(p) %}
   {% if tested and tested[0] == p %}
-  <p class="{{ 'flash' if tested[1] else 'error' }}" role="status">{% if tested[1] %}It works: Glimpse made a test meeting{% if p != 'google' %} and deleted it again{% endif %}. <span class="muted small">{{ tested[2] }}</span>{% else %}Test failed: {{ tested[2] }}{% endif %}</p>
+  <p class="{{ 'flash' if tested[1] else 'error' }}" role="status">{% if tested[1] %}It works: Glimpse made a test meeting{% if p not in ('google', 'jitsi') %} and deleted it again{% endif %}. <span class="muted small">{{ tested[2] }}</span>{% else %}Test failed: {{ tested[2] }}{% endif %}</p>
   {% endif %}
   {% if status[p] == 'ready' %}
   <div class="actions">
@@ -18,7 +18,7 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button type="submit" class="secondary small">Make a test meeting</button>
     </form>
-    {% if p != 'zoom' %}
+    {% if p not in ('zoom', 'jitsi') %}
     <form method="post" action="/video-calls/{{ p }}/disconnect" class="inline-form" data-confirm="Disconnect {{ names[p] }}? It stops being offered to people booking.">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button type="submit" class="link small">Disconnect</button>
@@ -33,8 +33,8 @@
 <header class="pagehead">
   <div>
     <h1>Video calls</h1>
-    <p class="muted">Glimpse can make a <strong>new meeting, with its own link, for every booking</strong> on Zoom, Microsoft Teams or Google Meet. The link is shared only once a meeting is confirmed, and cancelling a booking deletes its Zoom or Teams meeting. Set up the services you use here, then choose which ones each audience can pick under <em>Meeting requests</em> on its page.</p>
-    <p class="hint">Each service needs a free developer app that belongs to you, so no one else's server is involved. It takes about 10 minutes once; the steps are below each service. Prefer something simpler? A fixed link (your personal Zoom room, say) works without any of this.</p>
+    <p class="muted">Glimpse can make a <strong>new meeting, with its own link, for every booking</strong> on Zoom, Microsoft Teams, Google Meet, Webex or Jitsi Meet. The link is shared only once a meeting is confirmed, and cancelling a booking deletes its Zoom, Teams or Webex meeting. Set up the services you use here, then choose which ones each audience can pick under <em>Meeting requests</em> on its page.</p>
+    <p class="hint">Zoom, Teams, Google Meet and Webex each need a free developer app that belongs to you, so no one else's server is involved. It takes about 10 minutes once; the steps are below each service. Jitsi Meet needs nothing at all. Prefer something simpler? A fixed link (your personal Zoom room, say) works without any of this.</p>
   </div>
 </header>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
@@ -135,10 +135,57 @@
     <ol>
       <li>In the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud console</a>, create a project (e.g. &ldquo;Glimpse&rdquo;), then <strong>APIs &amp; Services &rsaquo; Library</strong> &rsaquo; enable the <strong>Google Meet REST API</strong>.</li>
       <li><strong>OAuth consent screen</strong> (Google Auth Platform): choose <strong>External</strong>, fill in the app name and your email. Under <strong>Audience</strong>, click <strong>Publish app</strong> so it's &ldquo;In production&rdquo;. (In &ldquo;Testing&rdquo;, Google signs you out every 7 days.) You don't need Google's verification for your own use.</li>
-      <li><strong>Clients</strong> &rsaquo; Create client &rsaquo; <strong>Web application</strong>. Under <strong>Authorized redirect URIs</strong>, add exactly:<br><code class="copyable">{{ redirect_uri }}</code> <button type="button" class="secondary small" data-copy="{{ redirect_uri }}">Copy</button></li>
+      <li><strong>Clients</strong> &rsaquo; Create client &rsaquo; <strong>Web application</strong>. Under <strong>Authorized redirect URIs</strong>, add exactly:<br><code class="copyable">{{ redirect_uris.google }}</code> <button type="button" class="secondary small" data-copy="{{ redirect_uris.google }}">Copy</button></li>
       <li>Copy the <strong>Client ID</strong> and <strong>Client secret</strong> into the boxes above, save, and click <strong>Sign in with Google</strong>. Google warns that the app isn't verified: choose <em>Advanced &rsaquo; Go to Glimpse</em>, since it's your own app.</li>
     </ol>
-    <p class="hint">Sign in from a device on your tailnet, because Google sends you back to the address above. If you reach the panel some other way, set it as the set its address under &ldquo;Link in notifications&rdquo; on <a href="/notifications">Notifications</a>ldquo;Settings panel addressset its address under &ldquo;Link in notifications&rdquo; on <a href="/notifications">Notifications</a>rdquo; on <a href="/notifications">Notifications</a> and use that address here. Google Meet links can't be deleted, so a cancelled booking's link simply goes unused.</p>
+    <p class="hint">Sign in from a device on your tailnet, because Google sends you back to the address above. If you reach the panel some other way, set it as the &ldquo;Settings panel address&rdquo; on <a href="/notifications">Notifications</a> and use that address here. Google Meet links can't be deleted, so a cancelled booking's link simply goes unused.</p>
+  </details>
+</section>
+
+<section class="panel" id="webex">
+  <div class="panelhead"><h2>Webex</h2>{{ state('webex') }}</div>
+  {% if accounts.webex and status.webex == 'ready' %}<p class="muted">Connected as <strong>{{ accounts.webex }}</strong>.</p>{% endif %}
+  <form method="post" action="/video-calls/webex" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if v.webex.enabled %}checked{% endif %}> Make Webex meetings</label>
+    <div class="grid2">
+      <label>Client ID <input type="text" name="client_id" value="{{ v.webex.client_id or '' }}" autocomplete="off" spellcheck="false"></label>
+      <label>Client secret <input type="password" name="client_secret" value="" placeholder="{{ 'Saved (paste to change)' if v.webex.client_secret else '' }}" autocomplete="new-password"></label>
+    </div>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {% if status.webex in ('sign_in', 'ready') %}
+  <p><a class="button {{ 'secondary small' if status.webex == 'ready' else '' }}" href="/video-calls/webex/connect?csrf={{ csrf }}">{{ 'Sign in again' if status.webex == 'ready' else 'Sign in with Webex' }}</a></p>
+  {% endif %}
+  {{ tools('webex') }}
+  <details class="help">
+    <summary>How to set up Webex</summary>
+    <ol>
+      <li>Sign in at <a href="https://developer.webex.com/" target="_blank" rel="noopener">developer.webex.com</a> with your Webex account, then open your avatar &rsaquo; <strong>My Webex Apps</strong> &rsaquo; <strong>Create a New App</strong> &rsaquo; <strong>Integration</strong>.</li>
+      <li>Name it &ldquo;Glimpse&rdquo;, pick any icon, and under <strong>Redirect URI(s)</strong> add exactly:<br><code class="copyable">{{ redirect_uris.webex }}</code> <button type="button" class="secondary small" data-copy="{{ redirect_uris.webex }}">Copy</button></li>
+      <li>Under <strong>Scopes</strong>, tick <code>meeting:schedules_read</code> and <code>meeting:schedules_write</code>, then <strong>Add Integration</strong>.</li>
+      <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> (shown only once) into the boxes above, save, and click <strong>Sign in with Webex</strong>.</li>
+    </ol>
+    <p class="hint">Webex's meeting API needs a Webex account with Meetings; if the test says your account can't schedule meetings, your plan doesn't include it. Like Google, sign in from a device on your tailnet. Glimpse renews the sign-in weekly so it doesn't lapse.</p>
+  </details>
+</section>
+
+<section class="panel" id="jitsi">
+  <div class="panelhead"><h2>Jitsi Meet</h2>{{ state('jitsi') }}</div>
+  <p class="muted">Free and open source, with nothing to set up: each booking gets a new room with a long random name, which works as its lock. Guests join from a browser or the Jitsi app without an account.</p>
+  <form method="post" action="/video-calls/jitsi" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if v.jitsi.enabled %}checked{% endif %}> Make Jitsi Meet rooms</label>
+    <label><span>Jitsi server</span> <input type="url" name="server" value="{{ v.jitsi.server }}" spellcheck="false">
+      <span class="hint">Leave as meet.jit.si, or use your own (or your school's) Jitsi server.</span></label>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {{ tools('jitsi') }}
+  <details class="help">
+    <summary>Good to know about Jitsi</summary>
+    <p class="hint">On the free meet.jit.si, the first person into a room becomes its moderator and has to sign in with Google, GitHub or Facebook, so join a few minutes early and sign in. Everyone else joins without an account. Many universities and organisations run their own Jitsi server without that step. Jitsi rooms can't be deleted, so a cancelled booking's room simply goes unused.</p>
   </details>
 </section>
 {% endblock %}

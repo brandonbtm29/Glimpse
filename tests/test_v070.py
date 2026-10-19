@@ -369,7 +369,7 @@ def test_google_sign_in_round_trip(panel, services):
     )
     # a made-up state is refused, so no one can attach their own account with a link
     bad = c.get("/video-calls/google/callback?state=forged&code=x")
-    assert "google_stale" in bad.headers["location"] and not rt.glimpse.video.accounts.get("google")
+    assert "signin_stale" in bad.headers["location"] and not rt.glimpse.video.accounts.get("google")
     ok = c.get(f"/video-calls/google/callback?state={q['state'][0]}&code=auth-code")
     assert "google_on" in ok.headers["location"]
     acct = rt.glimpse.video.accounts.get("google")

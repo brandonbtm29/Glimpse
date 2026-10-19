@@ -1,4 +1,4 @@
-"""A new online meeting for each booking: Zoom, Microsoft Teams and Google Meet.
+"""A new online meeting for each booking: Zoom, Microsoft Teams, Google Meet, Webex and Jitsi Meet.
 
 Each service is set up once in the settings panel:
 
@@ -9,6 +9,12 @@ Each service is set up once in the settings panel:
 * **Microsoft Teams**: an app registration in Microsoft Entra. You sign in once with a code
   (device sign-in, so no redirect address is needed); work or school accounts only, because
   Microsoft's meeting API doesn't support personal accounts.
+* **Webex**: an integration made at developer.webex.com. You sign in once (like Google).
+* **Jitsi Meet**: nothing to set up. Each meeting is a new room with a long random name on
+  meet.jit.si or your own Jitsi server.
+
+Sign-ins that use refresh tokens are renewed about weekly (``keep_alive``) so they don't lapse
+when nobody books for a while.
 
 Sign-in tokens live in ``video-accounts.json`` beside the config (never in config.yaml, and git
 ignores the file). Errors are reported in plain words without tokens or secrets.
@@ -20,6 +26,7 @@ import base64
 import json
 import logging
 import os
+import secrets
 import tempfile
 import threading
 import time
@@ -36,8 +43,17 @@ from .sources import USER_AGENT
 log = logging.getLogger("glimpse.video")
 
 FILE = "video-accounts.json"
-PLATFORMS = {"zoom": "Zoom", "teams": "Microsoft Teams", "google": "Google Meet"}
-SHORT = {"zoom": "Zoom", "teams": "Teams", "google": "Google Meet"}
+PLATFORMS = {
+    "zoom": "Zoom",
+    "teams": "Microsoft Teams",
+    "google": "Google Meet",
+    "webex": "Webex",
+    "jitsi": "Jitsi Meet",
+}
+SHORT = {"zoom": "Zoom", "teams": "Teams", "google": "Google Meet", "webex": "Webex", "jitsi": "Jitsi"}
+SIGN_IN = ("google", "webex")  # signed in with a redirect back to the panel
+KEEP_ALIVE_DAYS = 7
+ROOM_CHARS = "abcdefghijkmnpqrstuvwxyz23456789"  # 20 of these: about 100 random bits
 
 ZOOM_TOKEN = "https://zoom.us/oauth/token"  # noqa: S105 - an address, not a secret
 ZOOM_API = "https://api.zoom.us/v2"
@@ -49,6 +65,10 @@ MEET_API = "https://meet.googleapis.com/v2"
 MS_LOGIN = "https://login.microsoftonline.com"
 TEAMS_SCOPES = "openid profile offline_access OnlineMeetings.ReadWrite"
 GRAPH = "https://graph.microsoft.com/v1.0"
+WEBEX_API = "https://webexapis.com/v1"
+WEBEX_AUTH = f"{WEBEX_API}/authorize"
+WEBEX_TOKEN = f"{WEBEX_API}/access_token"  # noqa: S105
+WEBEX_SCOPES = "meeting:schedules_read meeting:schedules_write"
 
 
 class VideoError(Exception):
@@ -167,8 +187,10 @@ class VideoCalls:
         c = self._vc(platform)
         if platform == "zoom":
             return bool(c.account_id and c.client_id and c.client_secret and c.user)
-        if platform == "google":
+        if platform in SIGN_IN:
             return bool(c.client_id and c.client_secret)
+        if platform == "jitsi":
+            return bool(c.server)
         return bool(c.client_id)
 
     def status(self, platform: str) -> str:
@@ -177,7 +199,7 @@ class VideoCalls:
             return "off"
         if not self.configured(platform):
             return "setup"
-        if platform == "zoom":
+        if platform in ("zoom", "jitsi"):
             return "ready"
         acct = self.accounts.get(platform)
         if not acct.get("refresh_token") or acct.get("client_id") != self._vc(platform).client_id:
@@ -194,6 +216,8 @@ class VideoCalls:
     def account(self, platform: str) -> str | None:
         if platform == "zoom":
             return self._vc("zoom").user
+        if platform == "jitsi":
+            return self._vc("jitsi").server.split("//", 1)[-1]
         return self.accounts.get(platform).get("account")
 
     # -- tokens ------------------------------------------------------------------------------------
@@ -239,9 +263,9 @@ class VideoCalls:
         key = (platform, c.client_id, acct["refresh_token"][-12:])
         if hit := self._cached(key):
             return hit
-        if platform == "google":
+        if platform in SIGN_IN:
             resp = http.post(
-                GOOGLE_TOKEN,
+                GOOGLE_TOKEN if platform == "google" else WEBEX_TOKEN,
                 data={
                     "grant_type": "refresh_token",
                     "refresh_token": acct["refresh_token"],
@@ -265,36 +289,60 @@ class VideoCalls:
         data = resp.json()
         if data.get("refresh_token") and data["refresh_token"] != acct["refresh_token"]:
             acct["refresh_token"] = data["refresh_token"]  # Microsoft hands out a new one each time
-            self.accounts.set(platform, acct)
             key = (platform, c.client_id, acct["refresh_token"][-12:])
+        acct["refreshed"] = datetime.now(UTC).isoformat(timespec="seconds")
+        self.accounts.set(platform, acct)
         return self._remember(key, data["access_token"], data.get("expires_in"))
 
-    # -- Google sign-in (redirect) -------------------------------------------------------------------
+    def keep_alive(self) -> None:
+        """Renew sign-ins that haven't been used for a week. Microsoft and Webex sign-ins lapse
+        after about 90 days unused, which would otherwise surprise you on the next booking."""
+        now = datetime.now(UTC)
+        for platform in ("google", "teams", "webex"):
+            if self.status(platform) != "ready":
+                continue
+            acct = self.accounts.get(platform)
+            last = acct.get("refreshed") or acct.get("connected") or ""
+            try:
+                age = now - datetime.fromisoformat(last)
+            except ValueError:
+                age = timedelta(days=KEEP_ALIVE_DAYS)
+            if age < timedelta(days=KEEP_ALIVE_DAYS):
+                continue
+            self._forget_tokens(platform)
+            try:
+                with client() as http:
+                    self._token(platform, http)
+            except (VideoError, httpx.HTTPError) as exc:
+                log.warning("couldn't renew the %s sign-in: %s", PLATFORMS[platform], exc)
 
-    def google_auth_url(self, redirect_uri: str, state: str) -> str:
-        c = self._vc("google")
-        return (
-            GOOGLE_AUTH
-            + "?"
-            + urlencode(
-                {
-                    "client_id": c.client_id,
-                    "redirect_uri": redirect_uri,
-                    "response_type": "code",
-                    "scope": GOOGLE_SCOPES,
-                    "access_type": "offline",
-                    "prompt": "consent",
-                    "include_granted_scopes": "true",
-                    "state": state,
-                }
-            )
-        )
+    # -- Google and Webex sign-in (redirect back to the panel) ------------------------------------------
 
-    def google_finish(self, code: str, redirect_uri: str) -> str:
-        c = self._vc("google")
+    def auth_url(self, platform: str, redirect_uri: str, state: str) -> str:
+        c = self._vc(platform)
+        params = {
+            "client_id": c.client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "state": state,
+        }
+        if platform == "google":
+            params |= {
+                "scope": GOOGLE_SCOPES,
+                "access_type": "offline",
+                "prompt": "consent",
+                "include_granted_scopes": "true",
+            }
+            return f"{GOOGLE_AUTH}?{urlencode(params)}"
+        params["scope"] = WEBEX_SCOPES
+        return f"{WEBEX_AUTH}?{urlencode(params)}"
+
+    def finish_sign_in(self, platform: str, code: str, redirect_uri: str) -> str:
+        c = self._vc(platform)
+        name = PLATFORMS[platform]
         with client() as http:
             resp = http.post(
-                GOOGLE_TOKEN,
+                GOOGLE_TOKEN if platform == "google" else WEBEX_TOKEN,
                 data={
                     "grant_type": "authorization_code",
                     "code": code,
@@ -304,27 +352,30 @@ class VideoCalls:
                 },
             )
         if resp.status_code != 200:
-            raise VideoError(f"Google didn't finish the sign-in ({_why(resp)}).")
+            raise VideoError(f"{name} didn't finish the sign-in ({_why(resp)}).")
         data = resp.json()
-        if "meetings.space.created" not in str(data.get("scope", "meetings.space.created")):
-            raise VideoError("Google sign-in worked, but permission to create Meet meetings wasn't given.")
+        needed = "meetings.space.created" if platform == "google" else "meeting:schedules_write"
+        if needed not in str(data.get("scope", needed)):
+            raise VideoError(f"{name} sign-in worked, but permission to create meetings wasn't given.")
         if not data.get("refresh_token"):
-            raise VideoError("Google didn't send a lasting sign-in. Remove Glimpse's access and try again.")
+            raise VideoError(f"{name} didn't send a lasting sign-in. Remove Glimpse's access and try again.")
         email = _jwt_claims(data.get("id_token")).get("email")
+        now = datetime.now(UTC).isoformat(timespec="seconds")
         self.accounts.set(
-            "google",
+            platform,
             {
                 "refresh_token": data["refresh_token"],
                 "client_id": c.client_id,
                 "account": email,
-                "connected": datetime.now(UTC).isoformat(timespec="seconds"),
+                "connected": now,
+                "refreshed": now,
             },
         )
-        self._forget_tokens("google")
+        self._forget_tokens(platform)
         self._remember(
-            ("google", c.client_id, data["refresh_token"][-12:]), data["access_token"], data.get("expires_in")
+            (platform, c.client_id, data["refresh_token"][-12:]), data["access_token"], data.get("expires_in")
         )
-        return email or "your Google account"
+        return email or f"your {name} account"
 
     # -- Teams sign-in (device code) -----------------------------------------------------------------
 
@@ -385,13 +436,15 @@ class VideoCalls:
             raise VideoError(f"Microsoft didn't finish the sign-in ({_why(resp)}).")
         data = resp.json()
         claims = _jwt_claims(data.get("id_token"))
+        now = datetime.now(UTC).isoformat(timespec="seconds")
         self.accounts.set(
             "teams",
             {
                 "refresh_token": data["refresh_token"],
                 "client_id": c.client_id,
                 "account": claims.get("preferred_username") or claims.get("email") or claims.get("name"),
-                "connected": datetime.now(UTC).isoformat(timespec="seconds"),
+                "connected": now,
+                "refreshed": now,
             },
         )
         self.pending_teams = None
@@ -417,6 +470,10 @@ class VideoCalls:
         """Make a meeting; raises VideoError (with a message you can show) if it can't."""
         if not self.ready(platform):
             raise VideoError(f"{PLATFORMS.get(platform, platform)} isn't set up.")
+        if platform == "jitsi":
+            # A long random room name is the meeting's only lock, like any Jitsi link.
+            room = "Glimpse" + "".join(secrets.choice(ROOM_CHARS) for _ in range(20))
+            return Meeting("jitsi", room, f"{self._vc('jitsi').server}/{room}")
         try:
             with client() as http:
                 token = self._token(platform, http)
@@ -450,6 +507,26 @@ class VideoCalls:
                         raise VideoError(f"Teams couldn't make the meeting ({_why(resp)}).")
                     data = resp.json()
                     return Meeting("teams", str(data["id"]), data["joinWebUrl"])
+                if platform == "webex":
+                    resp = http.post(
+                        f"{WEBEX_API}/meetings",
+                        headers=head,
+                        json={
+                            "title": title[:128],
+                            "agenda": agenda[:1300],
+                            "start": _utc(start),
+                            "end": _utc(end),
+                            "timezone": "UTC",
+                        },
+                    )
+                    if resp.status_code not in (200, 201):
+                        raise VideoError(f"Webex couldn't make the meeting ({_why(resp)}).")
+                    data = resp.json()
+                    if data.get("hostEmail") and not self.accounts.get("webex").get("account"):
+                        acct = self.accounts.get("webex")
+                        acct["account"] = data["hostEmail"]
+                        self.accounts.set("webex", acct)
+                    return Meeting("webex", str(data["id"]), data["webLink"])
                 open_access = self._vc("google").open_access
                 resp = http.post(
                     f"{MEET_API}/spaces",
@@ -466,9 +543,9 @@ class VideoCalls:
             raise VideoError(f"{PLATFORMS[platform]} sent an answer Glimpse didn't understand.") from exc
 
     def delete(self, platform: str, meeting_id: str) -> None:
-        """Remove a meeting that's no longer happening. Google Meet links can't be deleted: the
-        space simply goes unused. Best effort; raises VideoError if the service refused."""
-        if not meeting_id or platform == "google" or self.status(platform) != "ready":
+        """Remove a meeting that's no longer happening. Google Meet and Jitsi links can't be
+        deleted: they simply go unused. Best effort; raises VideoError if the service refused."""
+        if not meeting_id or platform in ("google", "jitsi") or self.status(platform) != "ready":
             return
         try:
             with client() as http:
@@ -476,6 +553,8 @@ class VideoCalls:
                 head = {"Authorization": f"Bearer {token}"}
                 if platform == "zoom":
                     resp = http.delete(f"{ZOOM_API}/meetings/{meeting_id}", headers=head)
+                elif platform == "webex":
+                    resp = http.delete(f"{WEBEX_API}/meetings/{meeting_id}", headers=head)
                 else:
                     resp = http.delete(f"{GRAPH}/me/onlineMeetings/{meeting_id}", headers=head)
         except httpx.HTTPError as exc:

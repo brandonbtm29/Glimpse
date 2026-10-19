@@ -143,9 +143,10 @@ FLASH = {
     "thanks": "Thanks for using Glimpse!",
     "google_on": "Google Meet connected. Try \u201cMake a test meeting\u201d to check it works.",
     "teams_on": "Teams connected. Try \u201cMake a test meeting\u201d to check it works.",
-    "google_stale": "That Google sign-in link was old or not from this panel. Please connect again.",
-    "google_cancelled": "Google sign-in was cancelled.",
-    "google_failed": "Google sign-in didn't finish. Sign in to the panel and try again.",
+    "webex_on": "Webex connected. Try \u201cMake a test meeting\u201d to check it works.",
+    "signin_stale": "That sign-in link was old or not from this panel. Please connect again.",
+    "signin_cancelled": "Sign-in was cancelled.",
+    "signin_failed": "Sign-in didn't finish. Sign in to the panel and try again.",
     "video_off": "Disconnected. It's no longer offered to people booking.",
 }
 VIEW_HELP = {
@@ -2258,8 +2259,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
 
     # -- video calls (a new Zoom / Teams / Meet meeting for each booking) ------------------------
 
-    def google_redirect_uri() -> str:
-        return f"{panel_link().rstrip('/')}/video-calls/google/callback"
+    def redirect_uri(platform: str) -> str:
+        return f"{panel_link().rstrip('/')}/video-calls/{platform}/callback"
 
     def video_page(request, sess, error=None, status=200, tested=None):
         video = rt.glimpse.video
@@ -2284,7 +2285,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "accounts": {p: video.account(p) for p in conferencing.PLATFORMS},
                 "used": used,
                 "teams_wait": teams_wait,
-                "redirect_uri": google_redirect_uri(),
+                "redirect_uris": {p: redirect_uri(p) for p in conferencing.SIGN_IN},
                 "tested": tested,
                 "error": error,
             },
@@ -2317,13 +2318,15 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "zoom": ("account_id", "client_id", "user"),
                 "google": ("client_id",),
                 "teams": ("client_id",),
+                "webex": ("client_id",),
+                "jitsi": (),
             }
             for key in keys[platform]:
                 if text(key):
                     node[key] = text(key)
                 else:
                     node.pop(key, None)
-            if platform in ("zoom", "google") and text("client_secret", 300):
+            if platform in ("zoom", "google", "webex") and text("client_secret", 300):
                 d.set_secret(
                     node,
                     "client_secret",
@@ -2336,6 +2339,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node["open_access"] = form.get("open_access") == "on"
             if platform == "teams":
                 node["tenant"] = text("tenant", 100) or "organizations"
+            if platform == "jitsi":
+                node["server"] = text("server", 200) or "https://meet.jit.si"
 
         try:
             await save(mutate)
@@ -2367,40 +2372,43 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         return done(f"/video-calls#{platform}", "video_off")
 
     def oauth_signer() -> URLSafeTimedSerializer:
-        return URLSafeTimedSerializer(cfg().server.secret_key, salt="glimpse-google-oauth")
+        return URLSafeTimedSerializer(cfg().server.secret_key, salt="glimpse-video-sign-in")
 
-    @app.get("/video-calls/google/connect")
-    def google_connect(request: Request, csrf: str = ""):
+    @app.get("/video-calls/{platform}/connect")
+    def video_connect(request: Request, platform: str, csrf: str = ""):
         sess = session(request)
         if not sess:
             return to_login()
-        if not hmac.compare_digest(csrf, str(sess.get("c", ""))):
+        if platform not in conferencing.SIGN_IN or not hmac.compare_digest(csrf, str(sess.get("c", ""))):
             return RedirectResponse("/video-calls", status_code=303)
-        if not rt.glimpse.video.configured("google"):
-            return RedirectResponse("/video-calls#google", status_code=303)
-        state = oauth_signer().dumps({"r": google_redirect_uri()})
-        return RedirectResponse(
-            rt.glimpse.video.google_auth_url(google_redirect_uri(), state), status_code=303
-        )
+        if not rt.glimpse.video.configured(platform):
+            return RedirectResponse(f"/video-calls#{platform}", status_code=303)
+        uri = redirect_uri(platform)
+        state = oauth_signer().dumps({"p": platform, "r": uri})
+        return RedirectResponse(rt.glimpse.video.auth_url(platform, uri, state), status_code=303)
 
-    @app.get("/video-calls/google/callback", response_class=HTMLResponse)
-    async def google_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+    @app.get("/video-calls/{platform}/callback", response_class=HTMLResponse)
+    async def video_callback(
+        request: Request, platform: str, state: str = "", code: str = "", error: str = ""
+    ):
         # The signed state proves the sign-in was started from this panel in the last 15 minutes,
-        # so nobody can attach their own Google account by sending you a link.
+        # so nobody can attach their own account by sending you a link.
         try:
             data = oauth_signer().loads(state, max_age=900)
         except BadSignature:
-            return RedirectResponse("/video-calls?ok=google_stale", status_code=303)
+            data = None
+        if not data or data.get("p") != platform or platform not in conferencing.SIGN_IN:
+            return RedirectResponse("/video-calls?ok=signin_stale", status_code=303)
         if error or not code:
-            return RedirectResponse("/video-calls?ok=google_cancelled", status_code=303)
+            return RedirectResponse(f"/video-calls?ok=signin_cancelled#{platform}", status_code=303)
         try:
-            await run_in_threadpool(rt.glimpse.video.google_finish, code, data["r"])
+            await run_in_threadpool(rt.glimpse.video.finish_sign_in, platform, code, data["r"])
         except conferencing.VideoError as exc:
             sess = session(request)
             if not sess:
-                return RedirectResponse("/video-calls?ok=google_failed", status_code=303)
+                return RedirectResponse("/video-calls?ok=signin_failed", status_code=303)
             return await run_in_threadpool(video_page, request, sess, str(exc), 400)
-        return RedirectResponse("/video-calls?ok=google_on#google", status_code=303)
+        return RedirectResponse(f"/video-calls?ok={platform}_on#{platform}", status_code=303)
 
     @app.post("/video-calls/teams/connect", response_class=HTMLResponse)
     async def teams_connect(request: Request):
