@@ -12,6 +12,11 @@
 {%- if show_copies and b.ev.copies > 1 %} <span class="copies" title="On {{ b.ev.copies }} of your calendars, shown once">×{{ b.ev.copies }}</span>{% endif -%}
 {%- endmacro %}
 
+{# Everything the details dialog shows (only fields this level already allows). #}
+{% macro evdata(b) -%}
+data-ev='{{ {"title": b.ev.title, "when": (fmt_day(b.start.date()) ~ (", all day" if b.ev.all_day else ", " ~ fmt_time(b.start) ~ " – " ~ fmt_time(b.end))), "owner": (((owner_label ~ ": ") if owner_label is defined else "") ~ view.owner_time(b.start) if view.owner_tz and not b.ev.all_day else ""), "loc": b.ev.location, "notes": b.ev.notes, "cal": (b.ev.calendar_name if b.ev.calendar_name and b.ev.level.value != "label" else ""), "mark": b.ev.marker, "color": b.color or "", "cls": b.color_class} | tojson }}' tabindex="0" role="button"
+{%- endmacro %}
+
 {% macro hover(b) -%}
 {{ b.ev.title }} · {% if b.ev.all_day %}all day{% else %}{{ b.time_label }}{% if view.owner_tz %} ({{ view.owner_time(b.start) }}){% endif %}{% endif %}
 {%- if b.ev.location %} · {{ b.ev.location }}{% endif %}
@@ -50,7 +55,7 @@
       {% for d in view.days %}
       <div class="alldaycell">
         {% for b in d.all_day %}
-        <div class="ev pill {{ b.color_class }}" style="{{ evstyle(b) }}" title="{{ hover(b) }}">{{ mark(b.ev) }}{{ b.ev.title }}{{ copies(b) }}{% if not b.ev.all_day %} <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>{% endif %}</div>
+        <div class="ev pill {{ b.color_class }}" style="{{ evstyle(b) }}" title="{{ hover(b) }}" {{ evdata(b) }}>{{ mark(b.ev) }}{{ b.ev.title }}{{ copies(b) }}{% if not b.ev.all_day %} <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>{% endif %}</div>
         {% endfor %}
       </div>
       {% endfor %}
@@ -66,7 +71,7 @@
         {% for b in d.timed %}
         <div class="ev block {{ b.color_class }}{% if b.short %} short{% endif %}"
              style="top: {{ '%.3f' % b.top }}%; height: {{ '%.3f' % b.height }}%; left: calc({{ '%.3f' % b.left }}% + 2px); width: calc({{ '%.3f' % b.width }}% - 4px); {{ evstyle(b) }}"
-             title="{{ hover(b) }}">{{ mark(b.ev) }}
+             title="{{ hover(b) }}" {{ evdata(b) }}>{{ mark(b.ev) }}
           <span class="t">{{ b.ev.title }}{{ copies(b) }}</span>
           <span class="when">{{ fmt_time(b.start, True) }}–{{ fmt_time(b.end, True) }}</span>
           {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}
@@ -85,7 +90,7 @@
       {% if items %}
       <ul>
         {% for b in items %}
-        <li class="ev line {{ b.color_class }}" style="{{ evstyle(b) }}">{{ mark(b.ev) }}
+        <li class="ev line {{ b.color_class }}" style="{{ evstyle(b) }}" {{ evdata(b) }}>{{ mark(b.ev) }}
           <span class="when">{% if b.ev.all_day %}All day{% else %}{{ fmt_time(b.start) }} – {{ fmt_time(b.end) }}{% endif %}</span>
           <span class="t">{{ b.ev.title }}{{ copies(b) }}</span>
           {% if b.ev.location %}<span class="loc">{{ b.ev.location }}</span>{% endif %}

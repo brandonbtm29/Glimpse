@@ -144,6 +144,15 @@
       <label class="check"><input type="checkbox" name="shared_link" {% if aud.shared_link %}checked{% endif %}> Shared link works <span class="muted">(off: only people's own links work)</span></label>
       <label class="check"><input type="checkbox" name="allow_excel" {% if aud.allow_excel %}checked{% endif %}> Allow &ldquo;Download as Excel&rdquo;</label>
       <label class="check"><input type="checkbox" name="allow_ics" {% if aud.allow_ics %}checked{% endif %}> Allow subscribing in a calendar app</label>
+      {% if feeds %}
+      <details class="help sub-check"{% if aud.feed_skip %} open{% endif %}>
+        <summary>Leave calendars out of the subscription{% if aud.feed_skip %} ({{ aud.feed_skip | length }}){% endif %}</summary>
+        <p class="hint">For calendars they already have in their own calendar app, like a calendar you share with them in iCloud or Google. Otherwise those events show up twice there. Their Glimpse page still shows them.</p>
+        {% for f in feeds %}
+        <label class="check"><input type="checkbox" name="feed_skip" value="{{ f.id }}" {% if f.id in aud.feed_skip %}checked{% endif %}> <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}</label>
+        {% endfor %}
+      </details>
+      {% endif %}
       <label class="check"><input type="checkbox" name="show_all_day_busy" {% if aud.show_all_day_busy %}checked{% endif %}> Show all-day events as Busy <span class="muted">(off: birthdays and reminders don't block whole days)</span></label>
     </div>
     <div class="actions"><button type="submit">Save</button></div>

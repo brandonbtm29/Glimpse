@@ -355,6 +355,7 @@ class AudienceCfg(_Strict):
     show_all_day_busy: bool = False  # all-day events at `busy` level are usually reminders
     allow_excel: bool = True
     allow_ics: bool = True
+    feed_skip: list[str] = Field(default_factory=list)  # calendars left out of the subscription feed
     shared_link: bool = True  # False: only people's own links work (see `people`)
     timezone: str | None = None  # zone viewers see by default; None = yours
     views: list[ViewName] = Field(default_factory=lambda: list(VIEW_ORDER))
@@ -675,6 +676,9 @@ class AppConfig(_Strict):
                         f"audience {aid!r} refers to calendar {cid!r}, which is not defined "
                         f"(known: {', '.join(self.calendars)})"
                     )
+            for cid in aud.feed_skip:
+                if cid not in self.calendars:
+                    raise ValueError(f"audience {aid!r} leaves out calendar {cid!r}, which is not defined")
             for gid in aud.groups:
                 if gid not in self.groups:
                     raise ValueError(f"audience {aid!r} refers to group {gid!r}, which is not defined")

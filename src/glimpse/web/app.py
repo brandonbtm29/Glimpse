@@ -25,7 +25,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from .. import __version__
 from ..availability import busy_blocks_for_days, busy_times, fits_rules, is_free, open_slots, request_range
-from ..config import AppConfig, AudienceCfg
+from ..config import AppConfig, AudienceCfg, Level
 from ..core import Glimpse, add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..notify import Note, Notifier, invite_ics
 from ..render.ics import to_ics
@@ -995,6 +995,11 @@ def create_app(
         )
         s, _ = week_range(lo, g.cfg)
         _, e = week_range(hi, g.cfg)
+        if aud.feed_skip:
+            # Calendars they already have in their own calendar app (e.g. a shared iCloud
+            # calendar) would show twice there, so the subscription leaves them out.
+            hidden = dict.fromkeys(aud.feed_skip, Level.HIDDEN)
+            aud = aud.model_copy(update={"calendars": {**aud.calendars, **hidden}})
         body = to_ics(aud.title, g.view(aud, s, e), g.cfg.refresh_minutes)
         return Response(body, media_type="text/calendar; charset=utf-8")
 

@@ -250,6 +250,8 @@ All commands take `-c path/to/config.yaml` (default `./config.yaml`) and `-e pat
 - If a feed fails, Glimpse keeps showing the last good copy; the Overview shows which calendar has a problem.
 - All-day events at the `busy` level are hidden by default (they're usually birthdays and reminders). There's a checkbox per audience to show them.
 - Events marked "show as free" never appear as Busy, only at `title`/`full`.
+- Already share a calendar with someone directly (say, an iCloud calendar with your partner)? On their audience's page, leave it out of the subscription so its events don't show up twice in their calendar app.
+- Click or tap any event to see its full title and details (whatever that viewer is allowed to see).
 - The calendar-subscription link works without the password (calendar apps can't sign in), so treat it like the password, or turn subscriptions off for that audience.
 - Forgot the admin password? On the host, run `glimpse admin-password`.
 - Something not working? Check `logs/glimpse.log` in the Glimpse folder. It never contains your feed links.

@@ -1256,6 +1256,9 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node.pop("hours", None)
             node["weeks_ahead"] = num("weeks_ahead", 4)
             node["weeks_behind"] = num("weeks_behind", 1)
+            node["feed_skip"] = [cid for cid in form.getlist("feed_skip") if cid in d.calendars]
+            if not node["feed_skip"]:
+                node.pop("feed_skip")
             for flag in ("show_all_day_busy", "allow_excel", "allow_ics", "shared_link", "group_names"):
                 node[flag] = form.get(flag) == "on"
             views = [v for v in VIEW_ORDER if v in form.getlist("view")] or ["week"]

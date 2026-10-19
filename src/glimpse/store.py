@@ -132,6 +132,8 @@ class Draft:
         for aud in self.audiences.values():
             if isinstance(aud, dict) and isinstance(aud.get("calendars"), dict):
                 aud["calendars"].pop(cid, None)
+            if isinstance(aud, dict) and isinstance(aud.get("feed_skip"), list):
+                aud["feed_skip"] = [c for c in aud["feed_skip"] if c != cid]
         for grp in (self.raw.get("groups") or {}).values():
             if isinstance(grp, dict) and isinstance(grp.get("calendars"), list):
                 grp["calendars"] = [c for c in grp["calendars"] if c != cid]

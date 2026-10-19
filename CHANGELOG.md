@@ -8,6 +8,17 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-19
+
+### Added
+- **Click an event for its details**: on every view (and in the settings preview), click, tap
+  or press Enter on an event to see its full title, time, location, calendar and notes in a small
+  window. It shows only what that viewer may already see; busy blocks stay "Busy".
+- **Leave calendars out of a subscription**: on an audience's page, pick calendars to leave out
+  of its calendar-app subscription, such as a calendar you already share with them in iCloud or
+  Google. Their events no longer show up twice in the viewer's calendar app; the Glimpse page
+  still shows them.
+
 ## [0.5.0] - 2026-10-17
 
 ### Added

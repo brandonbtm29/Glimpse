@@ -798,3 +798,64 @@ def test_date_ranges_across_years_keep_both_years():
     from glimpse.render.week import fmt_range
 
     assert fmt_range(date(2025, 10, 20), date(2027, 10, 24)) == "Oct 20, 2025 – Oct 24, 2027"
+
+
+# --- 0.5.1: subscription leaves out shared calendars; event details ------------------------------
+
+
+def test_feed_can_leave_out_calendars_viewers_already_have(store):
+    from conftest import PARTNER_PASSWORD  # noqa: F401 - the partner feed needs no password
+
+    from glimpse.web.auth import feed_token
+    from glimpse.web.viewer import audience_viewer
+
+    g, _, c = public(store)
+    v = audience_viewer(g.cfg, "partner")
+    url = f"/a/{PARTNER_SLUG}/feed/{feed_token(g.cfg, v)}.ics"
+    before = c.get(url).text
+    assert "Grandma visit" in before  # from the Family calendar
+    store.update(lambda d: d.audiences["partner"].__setitem__("feed_skip", ["family"]))
+    g, _, c = public(store)
+    v = audience_viewer(g.cfg, "partner")
+    after = c.get(f"/a/{PARTNER_SLUG}/feed/{feed_token(g.cfg, v)}.ics").text
+    assert "Grandma visit" not in after and after.count("BEGIN:VEVENT") > 0
+    # Their page still shows it.
+    login = c.post(f"/a/{PARTNER_SLUG}/login", data={"password": "correct horse battery", "next": ""})
+    assert login.status_code == 303
+    assert "Grandma visit" in c.get(f"/a/{PARTNER_SLUG}/week/{WEEK}").text
+
+
+def test_feed_skip_saved_from_audience_page(panel):
+    rt, c = panel
+    csrf, rev = csrf_rev(c, "/audiences/partner")
+    html = c.get("/audiences/partner").text
+    assert 'name="feed_skip"' in html
+    form = {
+        "csrf": csrf,
+        "rev": rev,
+        "title": "Partner",
+        "default": "full",
+        "weeks_ahead": "52",
+        "weeks_behind": "52",
+        "view": ["week"],
+        "allow_ics": "on",
+        "feed_skip": ["family"],
+    }
+    assert c.post("/audiences/partner", data=form).status_code == 303
+    assert rt.cfg.audiences["partner"].feed_skip == ["family"]
+
+
+def test_events_carry_details_for_the_click_window(store):
+    import html as htmllib
+
+    _, _, c = public(store)
+    page = c.get(f"/a/{COWORKER_SLUG}/week/{WEEK}").text
+    blobs = [json.loads(htmllib.unescape(x)) for x in re.findall(r"data-ev='([^']*)'", page)]
+    assert blobs and all({"title", "when"} <= set(b) for b in blobs)
+    assert "/static/events.js" in page
+    # Busy blocks reveal nothing more in the window than on the grid.
+    for b in blobs:
+        if b["title"] == "Busy":
+            assert not (b["notes"] or b["loc"] or b["cal"])
+    month = c.get(f"/a/{COWORKER_SLUG}/month/2026-10-01").text
+    assert "data-ev='" in month
