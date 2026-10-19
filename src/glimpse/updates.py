@@ -217,7 +217,7 @@ def update_readiness(root: Path, tag: str | None = None, fetch: bool = True) -> 
 
 
 def backup_settings(config_path: Path, env_path: Path) -> Path:
-    """Copy config.yaml, .env, state.json, requests.json and Glimpse calendars to backups/<timestamp>/."""
+    """Copy config.yaml, .env, state/request/sign-in files and Glimpse calendars to backups/<timestamp>/."""
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = config_path.resolve().parent / "backups" / f"before-update-{stamp}"
     dest.mkdir(parents=True, exist_ok=True)
@@ -226,6 +226,7 @@ def backup_settings(config_path: Path, env_path: Path) -> Path:
         env_path,
         config_path.with_name("state.json"),
         config_path.with_name("requests.json"),
+        config_path.with_name("video-accounts.json"),
     ):
         if src.is_file():
             shutil.copy2(src, dest / src.name)

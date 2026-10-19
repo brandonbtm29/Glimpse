@@ -338,3 +338,9 @@ button.link.danger { color: #c93a5c; background: none; }
 @media (max-width: 700px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .event-form:has(input[name=all_day]:checked) .timed { visibility: hidden; }
 .events-table tr.past { opacity: 0.55; }
+
+/* video calls */
+.warn-text { color: #b8661a; }
+.code-big { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.25em; letter-spacing: .08em; }
+code.copyable { word-break: break-all; }
+.panel .notice { margin: 12px 0; }

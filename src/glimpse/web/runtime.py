@@ -7,6 +7,7 @@ import logging
 
 import httpx
 
+from .. import conferencing
 from ..config import AppConfig, ConfigError
 from ..core import Glimpse
 from ..notify import Notifier
@@ -26,6 +27,9 @@ class Runtime:
         self.seen = SeenStore(store.config_path.parent / "state.json" if store else None)
         self.requests = RequestStore(store.config_path.parent / "requests.json" if store else None)
         self.notifier = Notifier(lambda: self.cfg)
+        self.glimpse.video = conferencing.VideoCalls(
+            lambda: self.cfg, store.config_path.parent / conferencing.FILE if store else None
+        )
         self.updates = UpdateChecker(
             state_path=store.config_path.parent / "logs" / "update-check.json" if store else None
         )

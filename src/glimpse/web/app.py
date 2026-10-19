@@ -22,9 +22,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeTimedSerializer
+from starlette.concurrency import run_in_threadpool
 
 from .. import __version__, bookings
 from ..availability import busy_blocks_for_days, busy_times, fits_rules, is_free, open_slots, request_range
+from ..conferencing import PLATFORMS, SHORT
 from ..config import AppConfig, AudienceCfg, Level
 from ..core import Glimpse, add_months, allowed_week_bounds, day_range, period_bounds, week_range, week_start
 from ..notify import Note, Notifier
@@ -421,6 +423,8 @@ def create_app(
             "values": {},
             "back": asker.base if not asker.key.startswith(("w:", "b:")) else None,
             "zones": sorted({*COMMON_ZONES, g.cfg.timezone, tz.key}),
+            "offered": g.video.offered(r.platforms),
+            "platform_names": PLATFORMS,
         }
         base_ctx.update(ctx)
         return templates.TemplateResponse(request, "request.html", base_ctx, status_code=status)
@@ -433,7 +437,7 @@ def create_app(
         ip = client_ip(request)
         values = {
             k: str(form.get(k, ""))[:1000]
-            for k in ("name", "email", "note", "date", "time", "start", "mode", "day")
+            for k in ("name", "email", "note", "date", "time", "start", "mode", "day", "platform")
         }
         try:
             minutes = int(str(form.get("len", "")))
@@ -456,6 +460,8 @@ def create_app(
             return again("Please add an email address so you can hear back.")
         if minutes not in r.lengths:
             return again("Please pick one of the offered meeting lengths.")
+        offered = g.video.offered(r.platforms)
+        platform = values["platform"] if values["platform"] in offered else (offered[0] if offered else "")
         now = g.now()
         mode = values["mode"]
         if mode == "suggest" and r.suggest:
@@ -505,6 +511,7 @@ def create_app(
                 start=start.isoformat(),
                 end=end.isoformat(),
                 kind=kind,
+                platform=platform,
             )
         except OverflowError:
             return again("Too many requests are waiting right now. Please try again later.", 429)
@@ -516,11 +523,15 @@ def create_app(
         body = f"{who} · {aud.title}\n{when_text(start, end, own)}" + (
             " (suggested time)" if kind == "suggested" else ""
         )
+        if platform:
+            body += f" · {SHORT[platform]}"
         if note:
             body += f"\n“{note[:300]}”"
         if aud.requests.auto_confirm and kind == "slot":
-            item = bookings.confirm(g, reqs, item, "booked instantly")
+            item = await run_in_threadpool(bookings.confirm, g, reqs, item, "booked instantly")
             extra = f"\nAdded to {g.cfg.calendars[item.calendar].name}." if item.calendar else ""
+            if item.meeting_note:
+                extra += f"\n⚠ {item.meeting_note}"
             notes.owner(
                 Note(
                     title="New meeting booked",
@@ -569,6 +580,7 @@ def create_app(
             "emailed": notes.can_email_requesters(),
             "error": error,
             "past": item.end_dt < g.now(),
+            "platform_names": SHORT,
         }
         return templates.TemplateResponse(request, "request_status.html", ctx, status_code=status)
 

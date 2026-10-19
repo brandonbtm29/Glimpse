@@ -214,14 +214,23 @@
         </select>
         <span class="hint">{% if local_cals %}A Glimpse calendar, so meetings show up on your pages and your phone.{% else %}Make a Glimpse calendar on <a href="/my-calendars">My calendars</a> first.{% endif %}</span>
       </label>
-      <label><span>Meeting link <span class="muted">(optional)</span></span>
+      <label><span>{{ 'Fixed meeting link' if r.platforms else 'Meeting link' }} <span class="muted">(optional)</span></span>
         <input type="url" name="meeting_link" value="{{ r.meeting_link or '' }}" placeholder="https://zoom.us/j/… or a Teams link" spellcheck="false">
-        <span class="hint">Your personal Zoom room, a standing Teams meeting or a Google Meet link. Only shown once a meeting is confirmed. You can change it per meeting.</span>
+        <span class="hint">Your personal Zoom room, a standing Teams meeting or a Google Meet link. Only shown once a meeting is confirmed. You can change it per meeting.{% if r.platforms %} Used when no new meeting can be made.{% endif %}</span>
       </label>
       <label><span>Or where <span class="muted">(optional)</span></span>
         <input type="text" name="location" value="{{ r.location or '' }}" maxlength="200" placeholder="My office, room 301">
       </label>
     </div>
+    <fieldset class="checks" id="video-calls">
+      <legend>A new online meeting for each booking</legend>
+      {% for p, name in platform_names.items() %}
+      {% set st = video_status[p] %}
+      <label class="check"><input type="checkbox" name="platform" value="{{ p }}" {% if p in r.platforms %}checked{% endif %}> {{ name }}
+        {% if st == 'ready' %}<span class="status ok">Connected</span>{% elif st == 'off' %}<span class="muted">(not set up)</span>{% else %}<span class="status warn">Needs {{ 'signing in' if st == 'sign_in' else 'setting up' }}</span>{% endif %}</label>
+      {% endfor %}
+      <p class="hint">People choose one of the ticked services when they ask (if you tick only one, it's used for everyone). Each confirmed meeting gets its own link, and cancelling removes the Zoom or Teams meeting. Set the services up on <a href="/video-calls">Video calls</a>; until one is connected it isn't offered.</p>
+    </fieldset>
     <label><span>Note shown above the form <span class="muted">(optional)</span></span>
       <textarea name="message" rows="2" maxlength="500" placeholder="Happy to chat about the lab or projects. Meetings are on Zoom unless we say otherwise.">{{ r.message or '' }}</textarea>
     </label>

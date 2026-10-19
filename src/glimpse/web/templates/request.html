@@ -10,6 +10,20 @@
     <label class="wide"><span>What's it about? <span class="muted">(optional)</span></span>
       <textarea name="note" rows="3" maxlength="1000">{{ values.note or '' }}</textarea>
     </label>
+    {% if offered | length > 1 %}
+    <fieldset class="wide meet-pick">
+      <legend>How would you like to meet?</legend>
+      <div class="slots">
+        {% for p in offered %}
+        <label class="slot"><input type="radio" name="platform" value="{{ p }}" {% if (values.platform or offered[0]) == p %}checked{% endif %}><span>{{ platform_names[p] }}</span></label>
+        {% endfor %}
+      </div>
+      <span class="hint">You'll get the meeting link once it's confirmed.</span>
+    </fieldset>
+    {% elif offered %}
+    <input type="hidden" name="platform" value="{{ offered[0] }}">
+    <p class="wide hint">The meeting is on {{ platform_names[offered[0]] }}; you'll get the link once it's confirmed.</p>
+    {% endif %}
     <label class="hp" aria-hidden="true">Leave this empty <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
   </div>
 {% endmacro %}

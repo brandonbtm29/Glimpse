@@ -48,6 +48,9 @@ class MeetingRequest:
     link: str = ""  # video meeting link (Zoom, Teams, Meet...), shared once confirmed
     location: str = ""  # a room or address, shared once confirmed
     calendar: str | None = None  # Glimpse calendar the confirmed meeting was added to
+    platform: str = ""  # online-meeting service they chose: zoom, teams or google
+    meeting_id: str = ""  # the meeting made there for this booking (so it can be deleted)
+    meeting_note: str = ""  # why a meeting couldn't be made, for you
 
     @property
     def start_dt(self) -> datetime:

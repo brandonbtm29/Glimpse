@@ -8,8 +8,27 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-19
+
+### Added
+- **A new online meeting for every booking**, on **Zoom**, **Microsoft Teams** or **Google Meet**
+  (new **Video calls** page). Each confirmed meeting gets its own link, shown to the requester
+  only once it's confirmed, and cancelling deletes the Zoom or Teams meeting. Connect each
+  service once with your own developer app; step-by-step help and a "Make a test meeting" button
+  are on the page. Zoom uses a Server-to-Server OAuth app (no sign-in); Teams signs in with a
+  code (work or school accounts); Google Meet signs in with Google.
+- **The person booking chooses the service**: per audience, tick which services are offered. With
+  one ticked it's used for everyone; with several, the request form asks "How would you like to
+  meet?".
+- When accepting by hand you can make the new meeting or paste a link of your own instead.
+- If a meeting can't be made, your fixed link (if any) is sent instead and the Requests page says
+  why.
 - Donation links: GitHub Sponsors and Ko-fi in the README's Support section and the repository's
   Sponsor button.
+
+### Notes
+- Sign-ins are kept in `video-accounts.json` beside your config (git-ignored, included in update
+  backups). Client secrets go in `.env` like other secrets.
 
 ## [0.6.0] - 2026-10-19
 

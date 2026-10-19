@@ -154,6 +154,7 @@ audiences:
       location: null                    # or a room / address
       booking: false                    # a public booking page with its own link
       booking_slug: null                # the panel makes one when you switch it on
+      platforms: [zoom, teams]          # a new meeting per booking; they pick one (see video_calls)
     widget:                             # optional: free/busy view to embed in a website
       enabled: false
       slug: ${GLIMPSE_AUD_COWORKERS_WIDGET_SLUG}  # its own link (the panel makes one)
@@ -211,6 +212,30 @@ notify:                                 # switch on any mix; secrets live in .en
     enabled: false
     webhook_url: ${GLIMPSE_DISCORD_WEBHOOK}
   panel_url: null                       # link in notifications; default: your tailnet address :8443
+
+# ---------------------------------------------------------------------------
+# Video calls (optional): make a new Zoom / Teams / Google Meet meeting for each
+# booking. Easiest from the panel's Video calls page, which has step-by-step help.
+# Teams and Google Meet also need a one-time sign-in there; it's kept in
+# video-accounts.json beside this file.
+# ---------------------------------------------------------------------------
+video_calls:
+  zoom:                                 # a Server-to-Server OAuth app (marketplace.zoom.us)
+    enabled: false
+    account_id: null
+    client_id: null
+    client_secret: null                 # the panel keeps it in .env (GLIMPSE_ZOOM_CLIENT_SECRET)
+    user: you@example.com               # the Zoom login the meetings belong to
+    waiting_room: true
+  teams:                                # an app registration in Microsoft Entra (work/school accounts)
+    enabled: false
+    client_id: null                     # Application (client) ID; no secret needed
+    tenant: organizations
+  google:                               # an OAuth client in Google Cloud (Meet REST API)
+    enabled: false
+    client_id: null
+    client_secret: null                 # the panel keeps it in .env (GLIMPSE_GOOGLE_CLIENT_SECRET)
+    open_access: false                  # true: anyone with the link joins without asking
 
 # ---------------------------------------------------------------------------
 # School mode (optional): terms, breaks and exam weeks.

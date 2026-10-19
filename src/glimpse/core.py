@@ -6,6 +6,7 @@ from collections import OrderedDict
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from .conferencing import VideoCalls
 from .config import ALL_WEEKS, AppConfig, AudienceCfg
 from .events import Event, collect_events
 from .policy import VisibleEvent, visible_events
@@ -57,6 +58,7 @@ class Glimpse:
         self._events: OrderedDict[tuple, list[Event]] = OrderedDict()
         self.generation = 0
         self.school = SchoolCalendar(cfg)
+        self.video = VideoCalls(lambda: self.cfg)  # the runtime swaps in one that saves sign-ins
 
     def apply(self, new_cfg: AppConfig) -> list[str]:
         """Switch to a new config without a restart.

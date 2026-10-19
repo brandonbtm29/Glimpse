@@ -39,7 +39,8 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **Day, week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
 - **Time zones**: viewers see your schedule in their own time (detected, or picked from a list), with your time a click away. Hour limits always stay on your clock.
 - **Glimpse calendars**: make calendars right in Glimpse (no other account needed), add one-off or repeating events in the panel, and share one as a subscription link for phones and calendar apps.
-- **Meeting requests and booking**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, or let open times be booked straight away. Confirmed meetings can land on a Glimpse calendar automatically, with your Zoom, Teams or Meet link, and there's an optional public booking page. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
+- **Meeting requests and booking**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, or let open times be booked straight away. Confirmed meetings can land on a Glimpse calendar automatically, and there's an optional public booking page. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
+- **A new Zoom, Teams or Google Meet meeting for every booking**: the person booking picks the service you offer, each confirmed meeting gets its own link (shared only once it's confirmed), and cancelling deletes it. Or just use one fixed link.
 - **Notifications on your phone, by email or in Discord**: switch on any mix of the three to hear about new requests right away.
 - **Website widget**: a small free/busy view of the next few days (no titles) for a lab, course or personal site, with an optional "Request a meeting" button. It has its own link and you choose which sites may embed it.
 - **School mode**: tell Glimpse your semesters (typed in, or read from your school's academic calendar feed). Viewers see "Fall 2026 · Week 7" and break days, and class events pause over breaks and between terms.
@@ -186,11 +187,25 @@ Turn on **Meeting requests** on an audience's page. Its shared page then gets a 
 
 Requests wait on the panel's **Requests** page, where you accept, decline, or propose a new time, with an optional message. Or choose **Book it straight away**: picked open times are confirmed at once (suggested times still wait for you).
 
-**Meeting links and booked meetings.** On the audience's page, add your Zoom personal room, a standing Teams meeting or a Google Meet link (or a room). It's only revealed once a meeting is confirmed: on the requester's status page ("Join the meeting"), in the confirmation email and in the calendar file. You can change it per meeting when accepting. Choose a Glimpse calendar under **Add confirmed meetings to** and every confirmed meeting is added there (and removed if either of you cancels), so it shows on your pages and, through that calendar's subscription link, on your phone. Glimpse uses the link you give it; it doesn't create a new Zoom or Teams meeting for each booking.
+**Meeting links and booked meetings.** On the audience's page, add your Zoom personal room, a standing Teams meeting or a Google Meet link (or a room). It's only revealed once a meeting is confirmed: on the requester's status page ("Join the meeting"), in the confirmation email and in the calendar file. You can change it per meeting when accepting. To give every booking its own meeting instead, see [Video calls](#video-calls) below. Choose a Glimpse calendar under **Add confirmed meetings to** and every confirmed meeting is added there (and removed if either of you cancels), so it shows on your pages and, through that calendar's subscription link, on your phone.
 
 **Public booking page.** Tick **Also offer a public booking page** for a separate link (no password, open times only) to put in an email signature or on a website. Glimpse can't write to Google, Outlook or iCloud, so either let it add meetings to a Glimpse calendar (below) or use **Add to my calendar** (a one-event file your calendar app opens). The requester gets a private status page where they can see your answer, accept a new time, add the meeting to their calendar, or cancel. Waiting and accepted requests keep their time off the open list so nobody double-books you.
 
 Open times are worked out from every calendar except ones you mark on the Requests page as never making you busy (holidays, birthdays), with an optional buffer between meetings. Events marked "free" never block time. Requests are kept in `requests.json` beside your config. There's a limit on how many requests one link or one network address can send.
+
+### Video calls
+
+The **Video calls** page connects Glimpse to **Zoom**, **Microsoft Teams** and **Google Meet**, so each booking gets a brand-new meeting with its own link, instead of everyone sharing your personal room. Then, under **Meeting requests** on an audience's page, tick which services that audience may choose from. The person booking picks one (or, if you tick only one, it's used for everyone). The link appears for them only once the meeting is confirmed, and cancelling deletes the Zoom or Teams meeting. When accepting by hand you can still paste a different link instead. If a meeting can't be made, Glimpse sends your fixed link (if you set one) and shows you why on the Requests page.
+
+Each service needs a small developer app that belongs to you, so no outside server is involved. The panel walks you through it, and **Make a test meeting** checks it works:
+
+| Service | What you make | Sign-in | Notes |
+|---|---|---|---|
+| **Zoom** | A *Server-to-Server OAuth* app at marketplace.zoom.us with the `meeting:write:meeting:admin` and `meeting:delete:meeting:admin` scopes | None: paste the account ID, client ID and secret | Free Zoom plans limit meetings with 3+ people to 40 minutes. |
+| **Microsoft Teams** | An app registration in Microsoft Entra with *Allow public client flows* on and the delegated `OnlineMeetings.ReadWrite` permission | Once, with a code at microsoft.com/devicelogin | Work or school accounts only; Microsoft doesn't offer this for personal accounts. Your organisation may need to approve the app. |
+| **Google Meet** | A Google Cloud project with the Meet REST API on, a *Web application* OAuth client (with the redirect address the panel shows), and the consent screen published "In production" | Once, with Google | Google warns the app is unverified; it's yours, so continue. Meet links can't be deleted, so a cancelled one just goes unused. |
+
+Secrets (Zoom and Google client secrets) go in `.env`; the sign-ins are kept in `video-accounts.json` beside your config, which git ignores and update backups include.
 
 ### Notifications
 
@@ -263,6 +278,7 @@ All commands take `-c path/to/config.yaml` (default `./config.yaml`) and `-e pat
 - Events marked "show as free" never appear as Busy, only at `title`/`full`.
 - Already share a calendar with someone directly (say, an iCloud calendar with your partner)? On their audience's page, leave it out of the subscription so its events don't show up twice in their calendar app.
 - Click or tap any event to see its full title and details (whatever that viewer is allowed to see).
+- Zoom, Teams and Google Meet meetings are made with your own accounts through your own developer apps. Glimpse only asks permission to create (and for Zoom and Teams, delete) meetings, nothing else.
 - The calendar-subscription link works without the password (calendar apps can't sign in), so treat it like the password, or turn subscriptions off for that audience.
 - Forgot the admin password? On the host, run `glimpse admin-password`.
 - Something not working? Check `logs/glimpse.log` in the Glimpse folder. It never contains your feed links.

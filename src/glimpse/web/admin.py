@@ -17,6 +17,7 @@ import secrets
 import time
 import zoneinfo
 from datetime import date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -32,7 +33,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 from markupsafe import Markup, escape
 from starlette.concurrency import run_in_threadpool
 
-from .. import __version__, autostart, bookings, localcal, tailscale, updates
+from .. import __version__, autostart, bookings, conferencing, localcal, tailscale, updates
 from ..availability import busy_times, is_free
 from ..config import (
     EMOJI_MARKERS,
@@ -140,6 +141,12 @@ FLASH = {
     "req_removed": "Request removed from the list.",
     "req_gone": "That request no longer exists.",
     "thanks": "Thanks for using Glimpse!",
+    "google_on": "Google Meet connected. Try \u201cMake a test meeting\u201d to check it works.",
+    "teams_on": "Teams connected. Try \u201cMake a test meeting\u201d to check it works.",
+    "google_stale": "That Google sign-in link was old or not from this panel. Please connect again.",
+    "google_cancelled": "Google sign-in was cancelled.",
+    "google_failed": "Google sign-in didn't finish. Sign in to the panel and try again.",
+    "video_off": "Disconnected. It's no longer offered to people booking.",
 }
 VIEW_HELP = {
     "day": "Day: one day, hour by hour (handy on phones)",
@@ -1211,6 +1218,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "zones": sorted({*COMMON_ZONES, cfg().timezone, *([aud.timezone] if aud.timezone else [])}),
                 "lengths": REQUEST_LENGTHS,
                 "local_cals": [(cid, c) for cid, c in cfg().calendars.items() if c.local],
+                "platform_names": conferencing.PLATFORMS,
+                "video_status": {p: rt.glimpse.video.status(p) for p in conferencing.PLATFORMS},
                 "booking_url": f"{cfg().server.base_url.rstrip('/')}/b/{aud.requests.booking_slug}"
                 if aud.requests.booking_slug
                 else None,
@@ -1858,6 +1867,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "free": free,
                 "past": r.end_dt < now,
                 "ago": ago(r.created_dt),
+                "platform_name": conferencing.SHORT.get(r.platform),
+                "video_ready": bool(r.platform) and rt.glimpse.video.ready(r.platform),
             }
             (open_rows if r.open else done_rows).append(row)
         open_rows.sort(key=lambda x: x["r"].start)
@@ -1923,8 +1934,15 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             place = str(form.get("location", "")).strip()[:200]
             if meet and not re.fullmatch(r"https?://\S+", meet):
                 return requests_page(request, sess, "The meeting link should start with https://", 400)
+            new_call = (form.get("new_call") == "on") if form.get("call_choice") else None
             r = await run_in_threadpool(
-                bookings.confirm, rt.glimpse, rt.requests, r, "accepted", meet, place, reply=reply
+                partial(bookings.confirm, new_call=new_call, reply=reply),
+                rt.glimpse,
+                rt.requests,
+                r,
+                "accepted",
+                meet,
+                place,
             )
             more = bookings.details(r, include_note=False)
             rt.notifier.requester(
@@ -2082,6 +2100,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 req.pop("hours", None)
             node["requests"] = req
             req["auto_confirm"] = form.get("auto_confirm") == "on"
+            plats = [p for p in conferencing.PLATFORMS if p in form.getlist("platform")]
+            if plats:
+                req["platforms"] = plats
+            else:
+                req.pop("platforms", None)
             for key, val in (("calendar", target), ("meeting_link", meet)):
                 if val:
                     req[key] = val
@@ -2232,6 +2255,173 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             if base.startswith("https://") and base.count(":") == 1
             else "http://127.0.0.1:8001"
         )
+
+    # -- video calls (a new Zoom / Teams / Meet meeting for each booking) ------------------------
+
+    def google_redirect_uri() -> str:
+        return f"{panel_link().rstrip('/')}/video-calls/google/callback"
+
+    def video_page(request, sess, error=None, status=200, tested=None):
+        video = rt.glimpse.video
+        teams_wait = None
+        if video.pending_teams:
+            try:
+                if video.teams_poll() == "done":
+                    return done("/video-calls#teams", "teams_on")
+                teams_wait = video.pending_teams
+            except conferencing.VideoError as exc:
+                error = error or str(exc)
+        used = {
+            p: [a.title for a in cfg().audiences.values() if p in a.requests.platforms]
+            for p in conferencing.PLATFORMS
+        }
+        return page(
+            request,
+            "admin/video_calls.html",
+            {
+                "names": conferencing.PLATFORMS,
+                "status": {p: video.status(p) for p in conferencing.PLATFORMS},
+                "accounts": {p: video.account(p) for p in conferencing.PLATFORMS},
+                "used": used,
+                "teams_wait": teams_wait,
+                "redirect_uri": google_redirect_uri(),
+                "tested": tested,
+                "error": error,
+            },
+            sess,
+            status,
+        )
+
+    @app.get("/video-calls", response_class=HTMLResponse)
+    async def video_calls(request: Request):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        return await run_in_threadpool(video_page, request, sess)
+
+    @app.post("/video-calls/{platform}", response_class=HTMLResponse)
+    async def video_save(request: Request, platform: str):
+        sess, form = await checked_form(request)
+        if not sess:
+            return to_login()
+        if platform not in conferencing.PLATFORMS:
+            return RedirectResponse("/video-calls", status_code=303)
+
+        def text(name: str, limit: int = 200) -> str:
+            return str(form.get(name, "")).strip()[:limit]
+
+        def mutate(d: Draft) -> None:
+            node = d.section("video_calls").setdefault(platform, {})
+            node["enabled"] = form.get("enabled") == "on"
+            keys = {
+                "zoom": ("account_id", "client_id", "user"),
+                "google": ("client_id",),
+                "teams": ("client_id",),
+            }
+            for key in keys[platform]:
+                if text(key):
+                    node[key] = text(key)
+                else:
+                    node.pop(key, None)
+            if platform in ("zoom", "google") and text("client_secret", 300):
+                d.set_secret(
+                    node,
+                    "client_secret",
+                    text("client_secret", 300),
+                    f"GLIMPSE_{platform.upper()}_CLIENT_SECRET",
+                )
+            if platform == "zoom":
+                node["waiting_room"] = form.get("waiting_room") == "on"
+            if platform == "google":
+                node["open_access"] = form.get("open_access") == "on"
+            if platform == "teams":
+                node["tenant"] = text("tenant", 100) or "organizations"
+
+        try:
+            await save(mutate)
+        except ConfigError as exc:
+            return video_page(request, sess, str(exc), 400)
+        return done(f"/video-calls#{platform}", "saved")
+
+    @app.post("/video-calls/{platform}/test", response_class=HTMLResponse)
+    async def video_test(request: Request, platform: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if platform not in conferencing.PLATFORMS:
+            return RedirectResponse("/video-calls", status_code=303)
+        try:
+            m = await run_in_threadpool(rt.glimpse.video.test, platform)
+            result = (platform, True, m.url)
+        except conferencing.VideoError as exc:
+            result = (platform, False, str(exc))
+        return await run_in_threadpool(video_page, request, sess, None, 200, result)
+
+    @app.post("/video-calls/{platform}/disconnect")
+    async def video_disconnect(request: Request, platform: str):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if platform in conferencing.PLATFORMS:
+            await run_in_threadpool(rt.glimpse.video.disconnect, platform)
+        return done(f"/video-calls#{platform}", "video_off")
+
+    def oauth_signer() -> URLSafeTimedSerializer:
+        return URLSafeTimedSerializer(cfg().server.secret_key, salt="glimpse-google-oauth")
+
+    @app.get("/video-calls/google/connect")
+    def google_connect(request: Request, csrf: str = ""):
+        sess = session(request)
+        if not sess:
+            return to_login()
+        if not hmac.compare_digest(csrf, str(sess.get("c", ""))):
+            return RedirectResponse("/video-calls", status_code=303)
+        if not rt.glimpse.video.configured("google"):
+            return RedirectResponse("/video-calls#google", status_code=303)
+        state = oauth_signer().dumps({"r": google_redirect_uri()})
+        return RedirectResponse(
+            rt.glimpse.video.google_auth_url(google_redirect_uri(), state), status_code=303
+        )
+
+    @app.get("/video-calls/google/callback", response_class=HTMLResponse)
+    async def google_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+        # The signed state proves the sign-in was started from this panel in the last 15 minutes,
+        # so nobody can attach their own Google account by sending you a link.
+        try:
+            data = oauth_signer().loads(state, max_age=900)
+        except BadSignature:
+            return RedirectResponse("/video-calls?ok=google_stale", status_code=303)
+        if error or not code:
+            return RedirectResponse("/video-calls?ok=google_cancelled", status_code=303)
+        try:
+            await run_in_threadpool(rt.glimpse.video.google_finish, code, data["r"])
+        except conferencing.VideoError as exc:
+            sess = session(request)
+            if not sess:
+                return RedirectResponse("/video-calls?ok=google_failed", status_code=303)
+            return await run_in_threadpool(video_page, request, sess, str(exc), 400)
+        return RedirectResponse("/video-calls?ok=google_on#google", status_code=303)
+
+    @app.post("/video-calls/teams/connect", response_class=HTMLResponse)
+    async def teams_connect(request: Request):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        if not rt.glimpse.video.configured("teams"):
+            return RedirectResponse("/video-calls#teams", status_code=303)
+        try:
+            await run_in_threadpool(rt.glimpse.video.teams_start)
+        except conferencing.VideoError as exc:
+            return await run_in_threadpool(video_page, request, sess, str(exc), 400)
+        return RedirectResponse("/video-calls#teams", status_code=303)
+
+    @app.post("/video-calls/teams/cancel")
+    async def teams_cancel(request: Request):
+        sess, _ = await checked_form(request)
+        if not sess:
+            return to_login()
+        rt.glimpse.video.pending_teams = None
+        return RedirectResponse("/video-calls#teams", status_code=303)
 
     # -- school mode ----------------------------------------------------------------------------
 

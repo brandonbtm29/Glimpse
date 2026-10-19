@@ -18,10 +18,11 @@
       <h1>Waiting for an answer</h1>
       <p class="when">{{ when }}</p>
       {% if item.kind == 'suggested' %}<p class="muted">A time you suggested.</p>{% endif %}
+      {% if item.platform in platform_names %}<p class="muted">On {{ platform_names[item.platform] }}; the link appears here once it's confirmed.</p>{% endif %}
     {% elif item.status == 'accepted' %}
       <h1>Confirmed</h1>
       <p class="when">{{ when }}</p>
-      {% if item.link %}<p class="join"><a class="btn primary" href="{{ item.link }}" target="_blank" rel="noopener">Join the meeting</a> <span class="muted small">{{ item.link }}</span></p>{% endif %}
+      {% if item.link %}<p class="join"><a class="btn primary" href="{{ item.link }}" target="_blank" rel="noopener">Join the meeting{% if item.meeting_id and item.platform in platform_names %} on {{ platform_names[item.platform] }}{% endif %}</a> <span class="muted small">{{ item.link }}</span></p>{% endif %}
       {% if item.location %}<p class="muted">Where: {{ item.location }}</p>{% endif %}
       <p><a class="btn" href="/req/{{ item.token }}/invite.ics" download>Add to your calendar</a></p>
     {% elif item.status == 'countered' %}

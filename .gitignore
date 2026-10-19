@@ -4,6 +4,7 @@
 /state.json
 /requests.json
 /local-calendars/
+/video-accounts.json
 .env.local
 cache/
 *.ics.cache

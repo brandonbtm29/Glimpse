@@ -316,6 +316,9 @@ class RequestsCfg(_Strict):
     location: str | None = Field(default=None, max_length=200)  # e.g. a room; shared only once confirmed
     booking: bool = False  # a public booking page with its own link (no password, open times only)
     booking_slug: str | None = None
+    # online-meeting services people can choose from; each booking gets a new meeting there
+    # (set them up under video_calls). Empty: the fixed meeting_link, if any.
+    platforms: list[Literal["zoom", "teams", "google"]] = Field(default_factory=list)
 
     @field_validator("calendar", "location")
     @classmethod
@@ -334,6 +337,11 @@ class RequestsCfg(_Strict):
     @classmethod
     def _booking_slug(cls, v: str | None) -> str | None:
         return None if v is None or not v.strip() or v.strip().lower() in ("null", "none") else _check_slug(v)
+
+    @field_validator("platforms")
+    @classmethod
+    def _platforms(cls, v: list[str]) -> list[str]:
+        return list(dict.fromkeys(v))
 
     @field_validator("lengths")
     @classmethod
@@ -586,6 +594,68 @@ class NotifyCfg(_Strict):
         return _blank_none(v)
 
 
+class ZoomCfg(_Strict):
+    """Zoom, through a Server-to-Server OAuth app you make in the Zoom App Marketplace."""
+
+    enabled: bool = False
+    account_id: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None  # keep in .env
+    user: str | None = None  # the Zoom login (email) the meetings belong to
+    waiting_room: bool = True  # people wait until you let them in
+
+    @field_validator("account_id", "client_id", "client_secret", "user")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        v = _blank_none(v)
+        return v.strip() if v else v
+
+
+class GoogleMeetCfg(_Strict):
+    """Google Meet, through an OAuth client you make in Google Cloud and then sign in to."""
+
+    enabled: bool = False
+    client_id: str | None = None
+    client_secret: str | None = None  # keep in .env
+    open_access: bool = False  # anyone with the link joins straight away (else they ask to join)
+
+    @field_validator("client_id", "client_secret")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        v = _blank_none(v)
+        return v.strip() if v else v
+
+
+class TeamsCfg(_Strict):
+    """Microsoft Teams, through an app registration in Microsoft Entra (work or school accounts)."""
+
+    enabled: bool = False
+    client_id: str | None = None  # Application (client) ID; no secret needed
+    tenant: str = "organizations"  # or your organisation's directory (tenant) ID or domain
+
+    @field_validator("client_id")
+    @classmethod
+    def _blank(cls, v: str | None) -> str | None:
+        v = _blank_none(v)
+        return v.strip() if v else v
+
+    @field_validator("tenant")
+    @classmethod
+    def _tenant(cls, v: str) -> str:
+        v = (v or "").strip() or "organizations"
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,99}", v):
+            raise ValueError("the Teams tenant should be 'organizations', a directory ID or a domain")
+        return v
+
+
+class VideoCfg(_Strict):
+    """Services that make a new online meeting, with its own link, for each booking."""
+
+    zoom: ZoomCfg = Field(default_factory=ZoomCfg)
+    teams: TeamsCfg = Field(default_factory=TeamsCfg)
+    google: GoogleMeetCfg = Field(default_factory=GoogleMeetCfg)
+
+
 class AvailabilityCfg(_Strict):
     """How open times are worked out for meeting requests and widgets."""
 
@@ -669,6 +739,7 @@ class AppConfig(_Strict):
     people: dict[str, PersonCfg] = Field(default_factory=dict)
     updates: UpdatesCfg = Field(default_factory=UpdatesCfg)
     notify: NotifyCfg = Field(default_factory=NotifyCfg)
+    video_calls: VideoCfg = Field(default_factory=VideoCfg)
     availability: AvailabilityCfg = Field(default_factory=AvailabilityCfg)
     school: SchoolCfg = Field(default_factory=SchoolCfg)
     owner_name: str | None = None  # shown to viewers, e.g. "Brandon's time"
