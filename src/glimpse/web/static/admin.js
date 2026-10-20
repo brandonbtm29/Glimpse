@@ -171,3 +171,10 @@
     if (e.target.matches(".copyrow input[readonly]")) e.target.select();
   });
 })();
+
+// Old links to an audience's #requests or #widget section open that tab.
+(() => {
+  const m = location.pathname.match(/^\/audiences\/[^/]+$/);
+  const tab = { "#requests": "requests", "#widget": "widget", "#video-calls": "requests" }[location.hash];
+  if (m && tab && !location.search.includes("tab=")) location.replace(`${location.pathname}?tab=${tab}${location.hash}`);
+})();

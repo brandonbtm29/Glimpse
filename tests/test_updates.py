@@ -113,7 +113,7 @@ def test_new_installs_start_with_suggested_rules(tmp_path):
 # --- release check ------------------------------------------------------------------------
 
 
-def rel(v="0.9.0"):
+def rel(v="9.9.0"):
     return updates.Release(
         version=v, tag=f"v{v}", name=f"v{v}", notes="- New things", url="u", published="2026-11-01"
     )
@@ -136,7 +136,7 @@ def test_checker_caches_for_a_day_and_persists(tmp_path):
     c.check("me/Glimpse", force=True)
     assert len(calls) == 2
     again = updates.UpdateChecker(fetch=fetch, state_path=state)
-    assert again.last.release.version == "0.9.0" and not again.due()
+    assert again.last.release.version == "9.9.0" and not again.due()
 
 
 def test_checker_keeps_last_release_on_error(tmp_path):
@@ -151,7 +151,7 @@ def test_checker_keeps_last_release_on_error(tmp_path):
     c = updates.UpdateChecker(fetch=fetch)
     c.check("x/y")
     r = c.check("x/y", force=True)
-    assert r.error == "Couldn't reach GitHub to check." and r.release.version == "0.9.0"
+    assert r.error == "Couldn't reach GitHub to check." and r.release.version == "9.9.0"
 
 
 def test_latest_release_parses_github(monkeypatch):

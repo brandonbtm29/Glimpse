@@ -8,6 +8,22 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-19
+
+### Changed
+- **A shorter settings menu**: five sections instead of fourteen links, with tabs across the top
+  of each section. **Calendars** (Connected, My calendars, School), **Sharing** (Audiences,
+  People, Privacy rules, Preview), **Meetings** (Requests, Video calls, Notifications) and
+  **Settings** (General, This computer). *Setup* is now **Settings › This computer**. On phones
+  the menu takes two short rows instead of six. Page addresses haven't changed, so bookmarks
+  still work.
+- **The audience page is split into tabs**: Link & access, What they see, Meeting requests and
+  Website widget, instead of one very long page. Saving brings you back to the same tab.
+
+### Fixed
+- The Requests page no longer says accepting doesn't change your calendars (it adds the meeting
+  to the audience's Glimpse calendar when one is chosen).
+
 ## [0.8.0] - 2026-10-19
 
 ### Added

@@ -3,12 +3,20 @@
 {% block content %}
 <header class="pagehead">
   <div>
-    <p class="crumb"><a href="/sharing">Who sees what</a> /</p>
+    <p class="crumb"><a href="/sharing">Audiences</a> /</p>
     <h1>{{ aud.title }}</h1>
     <p class="muted">Can browse {{ range }} · {{ 'Password protected' if aud.password_hash else 'Anyone with the link' }}</p>
   </div>
   <a class="button secondary" href="/preview?view_as={{ aid }}">Preview what they see</a>
 </header>
+
+<nav class="tabs" aria-label="{{ aud.title }} settings">
+  {% for key, label in audience_tabs %}
+  <a href="/audiences/{{ aid }}?tab={{ key }}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}{% if (key == 'requests' and aud.requests.enabled) or (key == 'widget' and aud.widget.enabled) %} <span class="status ok">On</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+
+{% if tab == 'access' %}
 
 <section class="panel">
   <div class="panelhead"><h2>Shared link</h2><span class="muted small">Last opened {{ seen }}</span></div>
@@ -73,6 +81,9 @@
   </form>
 </section>
 
+{% endif %}
+
+{% if tab == 'see' %}
 <section class="panel">
   <h2>What they see</h2>
   <form method="post" action="/audiences/{{ aid }}" class="form">
@@ -159,9 +170,12 @@
   </form>
 </section>
 
+{% endif %}
+
+{% if tab == 'requests' %}
 <section class="panel" id="requests">
   <div class="panelhead"><h2>Meeting requests</h2>{% if aud.requests.enabled %}<a href="/requests">See requests &rarr;</a>{% endif %}</div>
-  <p class="muted">Let people on this page ask for a meeting: they pick one of your open times or suggest one. You approve each one, or let open times be booked straight away. Confirmed meetings can go onto a Glimpse calendar automatically, with your Zoom or Teams link.</p>
+  <p class="muted">Let people on this page ask for a meeting: they pick one of your open times or suggest one. You approve each one, or let open times be booked straight away. Confirmed meetings can go onto a Glimpse calendar automatically, with a video-call link.</p>
   {% if aud.requests.enabled and not channels %}<p class="notice">You won't be told about new requests until you switch on a <a href="/notifications">notification</a> (phone, email or Discord). They'll still wait on the <a href="/requests">Requests</a> page.</p>{% endif %}
   <form method="post" action="/audiences/{{ aid }}/requests" class="form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -250,6 +264,9 @@
   </form>
 </section>
 
+{% endif %}
+
+{% if tab == 'widget' %}
 <section class="panel" id="widget">
   <h2>Website widget</h2>
   <p class="muted">A small free/busy view of the next days (no titles, no calendar names) that you can put on a lab, course or personal website. It has its own link, so it never reveals this page's link.{% if aud.requests.enabled %} It includes a &ldquo;Request a meeting&rdquo; button.{% endif %}</p>
@@ -284,6 +301,9 @@
   {% endif %}
 </section>
 
+{% endif %}
+
+{% if tab == 'access' %}
 <section class="panel danger">
   <h2>Delete audience</h2>
   <p class="muted">The link stops working immediately{% if people %}, and so do the {{ people | length }} personal link{{ '' if people | length == 1 else 's' }} in it{% endif %}.</p>
@@ -292,4 +312,5 @@
     <button type="submit" class="danger">Delete {{ aud.title }}</button>
   </form>
 </section>
+{% endif %}
 {% endblock %}

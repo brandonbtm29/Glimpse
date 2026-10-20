@@ -106,7 +106,7 @@
       <tr class="meta">
         <th scope="row">Hours</th>
         {% for aid, aud in cfg.audiences.items() %}
-        <td class="muted small">{% if aud.hours %}{% for d in aud.hours.days %}{{ DAY_LABELS[d] }}{{ ', ' if not loop.last }}{% endfor %}<br>{{ fmt_time(aud.hours.start) }}–{{ fmt_time(aud.hours.end) }}{% else %}Any time{% endif %} · <a href="/audiences/{{ aid }}">edit</a></td>
+        <td class="muted small">{% if aud.hours %}{% for d in aud.hours.days %}{{ DAY_LABELS[d] }}{{ ', ' if not loop.last }}{% endfor %}<br>{{ fmt_time(aud.hours.start) }}–{{ fmt_time(aud.hours.end) }}{% else %}Any time{% endif %} · <a href="/audiences/{{ aid }}?tab=see">edit</a></td>
         {% endfor %}
       </tr>
     </tbody>

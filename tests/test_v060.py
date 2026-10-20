@@ -260,7 +260,7 @@ def test_booking_page_books_instantly_with_link(panel):
         and req.booking_slug
     )
     assert req.booking_slug not in rt.store.config_path.read_text()
-    html = c.get("/audiences/coworkers").text
+    html = c.get("/audiences/coworkers?tab=requests").text
     assert f"/b/{req.booking_slug}" in html
     pub = public_for(rt)
     page = pub.get(f"/b/{req.booking_slug}?len=30").text

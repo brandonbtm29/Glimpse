@@ -25,7 +25,7 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 
 ## Features
 
-- **Settings panel in your browser**: add calendar links, decide who sees what, and preview every audience's exact view. Works from any device on your Tailscale network (Mac, Windows, phone); never exposed publicly.
+- **Settings panel in your browser**: five sections (Calendars, Sharing, Meetings, Settings, plus an Overview) with tabs inside each. Add calendar links, decide who sees what, and preview every audience's exact view. Works from any device on your Tailscale network (Mac, Windows, phone); never exposed publicly.
 - **Any number of calendars** from Google, Outlook / Microsoft 365, iCloud, or anything else that publishes an ICS feed.
 - **Five detail levels**, set per audience *and* per calendar: `full`, `title`, `label`, `busy`, `hidden`.
 - **Distinct colours and shapes**: every calendar gets its own colour out of 12, and can have a small shape or emoji (triangle, star, 🎓…) so its events stand out without relying on colour.
@@ -128,18 +128,18 @@ The installer needs no administrator rights. It installs Python 3.12 for you if 
 ### 3. Finish in the browser
 
 1. **Choose an admin password.** This first page only works on the computer running Glimpse.
-2. **Setup page:** press **Turn on** for *Settings panel on your devices* and *Public share links*. The first time, Tailscale may ask you to approve HTTPS/Funnel; Glimpse shows you the link, so approve it and press the button again. Glimpse fills in your public address on its own.
+2. **Settings › This computer:** press **Turn on** for *Settings panel on your devices* and *Public share links*. The first time, Tailscale may ask you to approve HTTPS/Funnel; Glimpse shows you the link, so approve it and press the button again. Glimpse fills in your public address on its own.
 3. **Calendars → Add a calendar**: paste each feed link (see below), press **Test link**, then **Add**.
 4. **Who sees what → New audience**, then pick a level for each calendar. **Preview** shows exactly what each audience will see.
 5. **Overview** lists every share link with a Copy button.
 
-From then on, manage everything from any of your devices at `https://<host-name>.<tailnet>.ts.net:8443` (shown on the Setup page).
+From then on, manage everything from any of your devices at `https://<host-name>.<tailnet>.ts.net:8443` (shown under Settings › This computer).
 
 ### Updating
 
 Glimpse checks GitHub once a day for a new [release](https://github.com/brandonbtm29/Glimpse/releases) (you can turn this off in Settings) and shows a note in the settings panel when there is one. Your version is at the bottom of the panel's sidebar; the [changelog](CHANGELOG.md) lists what changed.
 
-- **Installed with git:** open **Setup → Updates** and press **Update now**. Glimpse backs up `config.yaml` and `.env` to `backups/`, switches to the new release, checks it can read your settings, and restarts. If the new version doesn't start, it goes back to the old one by itself. Details go to `logs/update.log`.
+- **Installed with git:** open **Settings › This computer** and, under Updates, press **Update now**. Glimpse backs up `config.yaml` and `.env` to `backups/`, switches to the new release, checks it can read your settings, and restarts. If the new version doesn't start, it goes back to the old one by itself. Details go to `logs/update.log`.
 - **Installed from a ZIP:** unzip the new release over the same folder (your `config.yaml`, `.env` and calendar cache are never overwritten) and run the installer again.
 
 Releases only ever move forward through tagged versions; unreleased work on `main` is never installed by the update button. If a release changes the format of `config.yaml`, Glimpse upgrades your file automatically on start and keeps the original as `config.yaml.v<N>.bak`.
@@ -148,7 +148,7 @@ Releases only ever move forward through tagged versions; unreleased work on `mai
 
 - **Start even before anyone signs in (Windows):** if the PC sometimes reboots and sits at the sign-in screen, run `scripts\windows\start-before-login.ps1` from an administrator PowerShell.
 - **Turn it off:** `scripts\windows\uninstall.ps1` (Windows) or `.venv/bin/glimpse autostart off` (macOS/Linux) stops Glimpse and its auto-start; your files stay put.
-- **Prefer a terminal?** Everything the installer and Setup page do is also a `glimpse` command (below).
+- **Prefer a terminal?** Everything the installer and the This computer page do is also a `glimpse` command (below).
 
 ### Getting your feed links
 
@@ -170,7 +170,7 @@ Send the link and the password through different channels (e.g. link by email, p
 
 With **People**, each person gets their own link instead, so cutting off one person (or letting their link expire on a date) leaves everyone else's link alone. "Last viewed" times are kept in `state.json` beside your config, never in `config.yaml`.
 
-**Testing a link from outside:** on the Setup page, **Test from the internet** checks your share links the way someone without Tailscale opens them. If a link works there but not on your own laptop with Tailscale switched off, your laptop is still remembering the private Tailscale address: try a phone on mobile data, or clear the browser's DNS cache.
+**Testing a link from outside:** under Settings › This computer, **Test from the internet** checks your share links the way someone without Tailscale opens them. If a link works there but not on your own laptop with Tailscale switched off, your laptop is still remembering the private Tailscale address: try a phone on mobile data, or clear the browser's DNS cache.
 
 ### Glimpse calendars
 
@@ -185,7 +185,7 @@ Turn on **Meeting requests** on an audience's page. Its shared page then gets a 
 - **Open times** to pick from, inside the hours you choose (by default the audience's hours, else weekdays 9–5), at least a day ahead and up to two weeks out (both adjustable), in the viewer's own time zone; and/or
 - **Suggest another time**, for when none of those work.
 
-Requests wait on the panel's **Requests** page, where you accept, decline, or propose a new time, with an optional message. Or choose **Book it straight away**: picked open times are confirmed at once (suggested times still wait for you).
+Requests wait under **Meetings › Requests** in the panel, where you accept, decline, or propose a new time, with an optional message. Or choose **Book it straight away**: picked open times are confirmed at once (suggested times still wait for you).
 
 **Meeting links and booked meetings.** On the audience's page, add your Zoom personal room, a standing Teams meeting or a Google Meet link (or a room). It's only revealed once a meeting is confirmed: on the requester's status page ("Join the meeting"), in the confirmation email and in the calendar file. You can change it per meeting when accepting. To give every booking its own meeting instead, see [Video calls](#video-calls) below. Choose a Glimpse calendar under **Add confirmed meetings to** and every confirmed meeting is added there (and removed if either of you cancels), so it shows on your pages and, through that calendar's subscription link, on your phone.
 

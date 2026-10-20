@@ -223,7 +223,7 @@ def test_panel_saves_secrets_to_env_and_shows_status(panel):
     html = c.get("/video-calls").text
     assert "Connected" in html and SECRET not in html and "Saved (paste to change)" in html
     # the audience page offers it, and saving the form keeps the choice
-    html = c.get("/audiences/coworkers").text
+    html = c.get("/audiences/coworkers?tab=requests").text
     assert 'name="platform" value="zoom"' in html
 
 

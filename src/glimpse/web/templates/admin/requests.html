@@ -4,7 +4,7 @@
 <header class="pagehead">
   <div>
     <h1>Meeting requests</h1>
-    <p class="muted">Times people asked for through your shared pages{% if requesting %} ({% for aid, a in requesting %}<a href="/audiences/{{ aid }}#requests">{{ a.title }}</a>{{ ', ' if not loop.last }}{% endfor %}){% endif %}. Accepting doesn't change your calendars: use &ldquo;Add to my calendar&rdquo; afterwards.</p>
+    <p class="muted">Times people asked for through your shared pages{% if requesting %} ({% for aid, a in requesting %}<a href="/audiences/{{ aid }}?tab=requests">{{ a.title }}</a>{{ ', ' if not loop.last }}{% endfor %}){% endif %}. Accepting adds the meeting to the Glimpse calendar chosen for that audience, if any; otherwise use &ldquo;Add to my calendar&rdquo; afterwards.</p>
   </div>
 </header>
 

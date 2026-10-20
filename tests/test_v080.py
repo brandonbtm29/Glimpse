@@ -194,7 +194,7 @@ def test_video_calls_page_has_no_mangled_text(panel):
 def test_audience_offers_all_five(panel):
     rt, c = panel
     setup_jitsi(rt)
-    html = c.get("/audiences/coworkers").text
+    html = c.get("/audiences/coworkers?tab=requests").text
     for p in conferencing.PLATFORMS:
         assert f'name="platform" value="{p}"' in html
     page = c.get("/audiences/coworkers").text

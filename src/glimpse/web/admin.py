@@ -149,6 +149,64 @@ FLASH = {
     "signin_failed": "Sign-in didn't finish. Sign in to the panel and try again.",
     "video_off": "Disconnected. It's no longer offered to people booking.",
 }
+# The sidebar: five sections, each with tabs across the top of its pages.
+# (key, label, link, [(tab key, tab label, link), ...])
+SECTIONS = [
+    ("overview", "Overview", "/", []),
+    (
+        "calendars",
+        "Calendars",
+        "/calendars",
+        [
+            ("calendars", "Connected", "/calendars"),
+            ("my_calendars", "My calendars", "/my-calendars"),
+            ("school", "School", "/school"),
+        ],
+    ),
+    (
+        "sharing",
+        "Sharing",
+        "/sharing",
+        [
+            ("sharing", "Audiences", "/sharing"),
+            ("people", "People", "/people"),
+            ("rules", "Privacy rules", "/rules"),
+            ("preview", "Preview", "/preview"),
+        ],
+    ),
+    (
+        "meetings",
+        "Meetings",
+        "/requests",
+        [
+            ("requests", "Requests", "/requests"),
+            ("video_calls", "Video calls", "/video-calls"),
+            ("notifications", "Notifications", "/notifications"),
+        ],
+    ),
+    (
+        "settings",
+        "Settings",
+        "/settings",
+        [("settings", "General", "/settings"), ("setup", "This computer", "/setup")],
+    ),
+]
+# Pages one level down (an audience, a calendar, a person, an event) belong to a tab but show a
+# breadcrumb instead of the tab row.
+DETAIL_PAGES = {
+    "calendar_edit": "calendars",
+    "local_calendar": "my_calendars",
+    "local_event": "my_calendars",
+    "audience": "sharing",
+    "person": "people",
+}
+TAB_SECTION = {tab: key for key, _, _, tabs in SECTIONS for tab, _, _ in tabs} | {"overview": "overview"}
+AUDIENCE_TABS = [
+    ("access", "Link & access"),
+    ("see", "What they see"),
+    ("requests", "Meeting requests"),
+    ("widget", "Website widget"),
+]
 VIEW_HELP = {
     "day": "Day: one day, hour by hour (handy on phones)",
     "week": "Week: the hour-by-hour grid",
@@ -366,11 +424,21 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         )
 
     def page(request: Request, name: str, ctx: dict, sess: dict | None = None, status: int = 200):
+        nav = name.split("/")[-1].split(".")[0]
+        tab = DETAIL_PAGES.get(nav, nav)
+        section = TAB_SECTION.get(tab)
         base = {
             "cfg": cfg(),
             "csrf": (sess or {}).get("c", ""),
             "flash": FLASH.get(request.query_params.get("ok", "")),
-            "nav": name.split("/")[-1].split(".")[0],
+            "nav": nav,
+            "sections": SECTIONS,
+            "section": section,
+            "section_tab": tab,
+            "section_label": next((lbl for k, lbl, _, _ in SECTIONS if k == section), ""),
+            "section_tabs": next((t for k, _, _, t in SECTIONS if k == section), [])
+            if nav not in DETAIL_PAGES
+            else [],
             "reload_error": rt.reload_error,
             "update": rt.updates.last if cfg().updates.check and rt.updates.last.update_available else None,
             "rev": store.revision(),
@@ -1199,8 +1267,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         await save(mutate)
         return done(f"/audiences/{box['id']}", "aud_added")
 
-    def audience_page(request, sess, aid, error=None, status=200):
+    def audience_page(request, sess, aid, error=None, status=200, tab=None):
         aud = cfg().audiences[aid]
+        tab = tab or request.query_params.get("tab", "")
+        if tab not in dict(AUDIENCE_TABS):
+            tab = "access"
         lo, hi = allowed_week_bounds(aud, rt.glimpse.today(), cfg())
         return page(
             request,
@@ -1228,6 +1299,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "embed": embed_code(aud),
                 "channels": rt.notifier.enabled(),
                 "error": error,
+                "tab": tab,
+                "audience_tabs": AUDIENCE_TABS,
             },
             sess,
             status,
@@ -1268,7 +1341,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 return dflt
 
         if errors:
-            return audience_page(request, sess, aid, " ".join(errors), 400)
+            return audience_page(request, sess, aid, " ".join(errors), 400, "see")
 
         def mutate(d: Draft) -> None:
             node = d.audiences[aid]
@@ -1300,8 +1373,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         try:
             await save(mutate)
         except ConfigError as exc:
-            return audience_page(request, sess, aid, str(exc), 400)
-        return done(f"/audiences/{aid}", "saved")
+            return audience_page(request, sess, aid, str(exc), 400, "see")
+        return done(f"/audiences/{aid}?tab=see", "saved")
 
     @app.post("/audiences/{aid}/password", response_class=HTMLResponse)
     async def audience_password(request: Request, aid: str):
@@ -1312,15 +1385,17 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             return RedirectResponse("/sharing", status_code=303)
         if form.get("action") == "remove":
             await save(lambda d: d.set_audience_password(aid, None))
-            return done(f"/audiences/{aid}", "pw_removed")
+            return done(f"/audiences/{aid}?tab=access", "pw_removed")
         pw, pw2 = str(form.get("password", "")), str(form.get("password2", ""))
         if len(pw) < 8:
-            return audience_page(request, sess, aid, "Use at least 8 characters for the password.", 400)
+            return audience_page(
+                request, sess, aid, "Use at least 8 characters for the password.", 400, "access"
+            )
         if pw != pw2:
-            return audience_page(request, sess, aid, "The two passwords didn't match.", 400)
+            return audience_page(request, sess, aid, "The two passwords didn't match.", 400, "access")
         h = await run_in_threadpool(_hasher.hash, pw)
         await save(lambda d: d.set_audience_password(aid, h))
-        return done(f"/audiences/{aid}", "pw_set")
+        return done(f"/audiences/{aid}?tab=access", "pw_set")
 
     @app.post("/audiences/{aid}/rotate")
     async def audience_rotate(request: Request, aid: str):
@@ -1329,7 +1404,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             return to_login()
         if aid in cfg().audiences:
             await save(lambda d: d.rotate_slug(aid))
-        return done(f"/audiences/{aid}", "rotated")
+        return done(f"/audiences/{aid}?tab=access", "rotated")
 
     @app.post("/audiences/{aid}/delete")
     async def audience_delete(request: Request, aid: str):
@@ -2075,7 +2150,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 return dflt
 
         if errors:
-            return audience_page(request, sess, aid, " ".join(errors), 400)
+            return audience_page(request, sess, aid, " ".join(errors), 400, "requests")
 
         def mutate(d: Draft) -> None:
             node = d.audiences[aid]
@@ -2121,9 +2196,9 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         try:
             await save(mutate)
         except ConfigError as exc:
-            return audience_page(request, sess, aid, str(exc), 400)
+            return audience_page(request, sess, aid, str(exc), 400, "requests")
         return done(
-            f"/audiences/{aid}#requests", "rotated" if form.get("action") == "rotate_booking" else "saved"
+            f"/audiences/{aid}?tab=requests", "rotated" if form.get("action") == "rotate_booking" else "saved"
         )
 
     @app.post("/audiences/{aid}/widget", response_class=HTMLResponse)
@@ -2151,8 +2226,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         try:
             await save(mutate)
         except ConfigError as exc:
-            return audience_page(request, sess, aid, str(exc), 400)
-        return done(f"/audiences/{aid}#widget", "rotated" if form.get("action") == "rotate" else "saved")
+            return audience_page(request, sess, aid, str(exc), 400, "widget")
+        return done(f"/audiences/{aid}?tab=widget", "rotated" if form.get("action") == "rotate" else "saved")
 
     # -- notifications ------------------------------------------------------------------------
 

@@ -593,7 +593,7 @@ def test_widget_panel_section(panel):
     w = rt.cfg.audiences["coworkers"].widget
     assert w.enabled and w.slug and w.sites == ["https://www.uakron.edu"] and w.days == 5
     assert w.slug not in rt.store.config_path.read_text()
-    html = c.get("/audiences/coworkers").text
+    html = c.get("/audiences/coworkers?tab=widget").text
     assert "&lt;iframe" in html and f"/w/{w.slug}" in html
 
 
@@ -828,7 +828,7 @@ def test_feed_can_leave_out_calendars_viewers_already_have(store):
 def test_feed_skip_saved_from_audience_page(panel):
     rt, c = panel
     csrf, rev = csrf_rev(c, "/audiences/partner")
-    html = c.get("/audiences/partner").text
+    html = c.get("/audiences/partner?tab=see").text
     assert 'name="feed_skip"' in html
     form = {
         "csrf": csrf,

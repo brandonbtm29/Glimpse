@@ -1,10 +1,10 @@
 {% extends "admin/base.html" %}
-{% block title %}Setup · Glimpse settings{% endblock %}
+{% block title %}This computer · Glimpse settings{% endblock %}
 {% block content %}
 <header class="pagehead">
   <div>
-    <h1>Setup</h1>
-    <p class="muted">{{ steps | selectattr('done') | list | length }} of {{ steps | length }} done</p>
+    <h1>This computer</h1>
+    <p class="muted">Setup: {{ steps | selectattr('done') | list | length }} of {{ steps | length }} done · Tailscale, starting automatically and updates</p>
   </div>
   <a class="button secondary" href="/setup?refresh=1">Check again</a>
 </header>
