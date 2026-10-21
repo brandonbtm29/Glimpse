@@ -8,6 +8,16 @@ notes come from the matching section below.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-20
+
+### Added
+- **Your own view (My calendar)**: an audience Glimpse makes for you automatically, first under
+  Sharing. It shows every calendar in full, including private events and ones caught by privacy
+  rules, with no hours limit, on a page that works without Tailscale. Its subscription link
+  merges all your calendars into one for your phone; leave out the ones your phone already has.
+  It stays locked until you give it its own password, and it can't be deleted or shared with
+  people. The Overview reminds you to switch it on.
+
 ## [0.9.0] - 2026-10-19
 
 ### Changed

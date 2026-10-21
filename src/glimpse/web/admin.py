@@ -436,6 +436,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
             "section": section,
             "section_tab": tab,
             "section_label": next((lbl for k, lbl, _, _ in SECTIONS if k == section), ""),
+            "shared_audiences": cfg().shared_audiences,
             "section_tabs": next((t for k, _, _, t in SECTIONS if k == section), [])
             if nav not in DETAIL_PAGES
             else [],
@@ -840,7 +841,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "feed": feed_link(aid) if aud.allow_ics else None,
                 "overrides": len(aud.calendars),
             }
-            for aid, aud in c.audiences.items()
+            for aid, aud in c.shared_audiences.items()
         ]
         local_base = any(h in c.server.base_url for h in ("127.0.0.1", "localhost"))
         steps = checklist(ts_status())
@@ -1183,7 +1184,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
     def audience_cards() -> list[dict]:
         c = cfg()
         out = []
-        for aid, aud in c.audiences.items():
+        for aid, aud in c.shared_audiences.items():
             out.append(
                 {
                     "id": aid,
@@ -1219,6 +1220,8 @@ def create_admin_app(rt: Runtime) -> FastAPI:
 
         def mutate(d: Draft) -> None:
             for aid, node in d.audiences.items():
+                if node.get("self_view"):
+                    continue  # your own view always shows everything
                 dflt = str(form.get(f"default__{aid}", ""))
                 if dflt in LEVELS:
                     node["default"] = dflt
@@ -1269,8 +1272,11 @@ def create_admin_app(rt: Runtime) -> FastAPI:
 
     def audience_page(request, sess, aid, error=None, status=200, tab=None):
         aud = cfg().audiences[aid]
+        tabs = [(k, "What you see" if aud.self_view and k == "see" else lbl) for k, lbl in AUDIENCE_TABS]
+        if aud.self_view:
+            tabs = [t for t in tabs if t[0] in ("access", "see")]
         tab = tab or request.query_params.get("tab", "")
-        if tab not in dict(AUDIENCE_TABS):
+        if tab not in dict(tabs):
             tab = "access"
         lo, hi = allowed_week_bounds(aud, rt.glimpse.today(), cfg())
         return page(
@@ -1300,7 +1306,7 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 "channels": rt.notifier.enabled(),
                 "error": error,
                 "tab": tab,
-                "audience_tabs": AUDIENCE_TABS,
+                "audience_tabs": tabs,
             },
             sess,
             status,
@@ -1355,6 +1361,9 @@ def create_admin_app(rt: Runtime) -> FastAPI:
                 node.pop("hours", None)
             node["weeks_ahead"] = num("weeks_ahead", 4)
             node["weeks_behind"] = num("weeks_behind", 1)
+            if node.get("self_view"):
+                shown = set(form.getlist("show_cal"))
+                node["calendars"] = {cid: "hidden" for cid in d.calendars if cid not in shown}
             node["feed_skip"] = [cid for cid in form.getlist("feed_skip") if cid in d.calendars]
             if not node["feed_skip"]:
                 node.pop("feed_skip")
@@ -1411,6 +1420,9 @@ def create_admin_app(rt: Runtime) -> FastAPI:
         sess, _ = await checked_form(request)
         if not sess:
             return to_login()
+        aud = cfg().audiences.get(aid)
+        if aud is not None and aud.self_view:
+            return RedirectResponse(f"/audiences/{aid}", status_code=303)  # your own view stays
         await save(lambda d: d.remove_audience(aid))
         return done("/sharing", "aud_deleted")
 

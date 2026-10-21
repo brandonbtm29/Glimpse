@@ -42,7 +42,7 @@
       </label>
       <label>Sees what this audience sees
         <select name="audience">
-          {% for aid, a in cfg.audiences.items() %}<option value="{{ aid }}" {% if row.p.audience == aid %}selected{% endif %}>{{ a.title }}</option>{% endfor %}
+          {% for aid, a in shared_audiences.items() %}<option value="{{ aid }}" {% if row.p.audience == aid %}selected{% endif %}>{{ a.title }}</option>{% endfor %}
         </select>
         <span class="hint">Moving them changes what their link shows right away.</span>
       </label>

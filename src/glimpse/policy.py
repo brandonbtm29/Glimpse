@@ -78,8 +78,11 @@ def rule_matches(rule: RuleCfg, ev: Event) -> bool:
 def restriction(cfg: AppConfig, ev: Event, audience: AudienceCfg | None = None) -> Level:
     """The most this event may ever reveal, from tags, the Private flag and keyword rules.
 
-    FULL means "no restriction". These apply to every audience and only reduce detail.
+    FULL means "no restriction". These apply to every audience and only reduce detail, except
+    your own view: it's you, so tags, the Private flag and rules don't hide anything from it.
     """
+    if audience is not None and audience.self_view:
+        return Level.FULL
     ov = cfg.overrides
     blob = f"{ev.summary}\n{ev.description}"
     if _contains(blob, ov.hide_tag):

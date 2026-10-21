@@ -406,6 +406,9 @@ class AudienceCfg(_Strict):
     default_view: ViewName = "week"
     requests: RequestsCfg = Field(default_factory=RequestsCfg)
     widget: WidgetCfg = Field(default_factory=WidgetCfg)
+    # Your own view: every calendar in full, no privacy rules or tags, no hours limit. Made
+    # automatically; it stays locked until it has a password.
+    self_view: bool = False
 
     @property
     def request_hours(self) -> HoursCfg:
@@ -438,6 +441,16 @@ class AudienceCfg(_Strict):
     def _default_view_allowed(self) -> AudienceCfg:
         if self.default_view not in self.views:
             self.default_view = self.views[0]
+        if self.self_view:
+            # Always everything (a calendar can only be left out), and nothing to share or book.
+            self.default = Level.FULL
+            self.calendars = {cid: lv for cid, lv in self.calendars.items() if lv is Level.HIDDEN}
+            self.groups = {}
+            self.hours = None
+            self.group_names = False
+            self.shared_link = True
+            self.requests = RequestsCfg()
+            self.widget = WidgetCfg()
         return self
 
 
@@ -819,9 +832,13 @@ class AppConfig(_Strict):
             if aud.slug in slugs:
                 raise ValueError(f"audiences {slugs[aud.slug]!r} and {aid!r} share the same slug")
             slugs[aud.slug] = aid
+        if sum(1 for a in self.audiences.values() if a.self_view) > 1:
+            raise ValueError("only one audience can be your own view (self_view)")
         for pid, person in self.people.items():
             if person.audience not in self.audiences:
                 raise ValueError(f"person {pid!r} is in audience {person.audience!r}, which is not defined")
+            if self.audiences[person.audience].self_view:
+                raise ValueError(f"person {pid!r} can't be put in your own view; pick another audience")
             if person.slug in slugs:
                 raise ValueError(f"person {pid!r} has the same link as {slugs[person.slug]!r}")
             slugs[person.slug] = pid
@@ -876,6 +893,16 @@ class AppConfig(_Strict):
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
+
+    @property
+    def self_audience(self) -> tuple[str, AudienceCfg] | None:
+        """Your own view (the automatic "My calendar" audience), if there is one."""
+        return next(((aid, a) for aid, a in self.audiences.items() if a.self_view), None)
+
+    @property
+    def shared_audiences(self) -> dict[str, AudienceCfg]:
+        """Every audience except your own view: the ones you share with other people."""
+        return {aid: a for aid, a in self.audiences.items() if not a.self_view}
 
     def audience_id(self, audience: AudienceCfg) -> str | None:
         """The id of an audience object from this config (None for e.g. the preview's "Everything")."""

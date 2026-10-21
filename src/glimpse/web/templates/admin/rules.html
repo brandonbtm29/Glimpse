@@ -32,10 +32,10 @@
     {% endfor %}
   </fieldset>
   {% endif %}
-  {% if cfg.audiences | length > 0 %}
+  {% if shared_audiences | length > 0 %}
   <fieldset class="checks">
     <legend>Don't apply to <span class="muted small">(e.g. your partner, who may see these)</span></legend>
-    {% for aid, a in cfg.audiences.items() %}
+    {% for aid, a in shared_audiences.items() %}
     <label class="check"><input type="checkbox" name="except" value="{{ aid }}" {% if aid in v.except_audiences %}checked{% endif %}> {{ a.title }}</label>
     {% endfor %}
   </fieldset>

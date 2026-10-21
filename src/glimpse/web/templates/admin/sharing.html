@@ -5,6 +5,7 @@
   <div>
     <h1>Who sees what</h1>
     <p class="muted">Each column is an audience with its own link. Pick how much of each calendar they see.{% if cfg.groups %} A group's setting applies to every calendar in it unless you pick something else for one calendar.{% endif %}</p>
+    {% if cfg.self_audience %}<p class="hint">Your own view, <a href="/audiences/{{ cfg.self_audience[0] }}">{{ cfg.self_audience[1].title }}</a>, always shows everything, so it isn't in this table.</p>{% endif %}
   </div>
 </header>
 
@@ -38,7 +39,7 @@
   {% for lv in LEVELS %}<li><span class="lvl lvl-{{ lv }}">{{ lv }}</span> {{ LEVEL_HELP[lv] }}</li>{% endfor %}
 </ul>
 
-{% if cfg.audiences %}
+{% if shared_audiences %}
 <form method="post" action="/sharing" class="panel matrix-wrap">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="rev" value="{{ rev }}">
@@ -47,7 +48,7 @@
     <thead>
       <tr>
         <th scope="col">Calendar</th>
-        {% for aid, aud in cfg.audiences.items() %}
+        {% for aid, aud in shared_audiences.items() %}
         <th scope="col">
           <a href="/audiences/{{ aid }}">{{ aud.title }}</a>
           <span class="tag {{ 'lock' if aud.password_hash else 'open' }}">{{ 'Password' if aud.password_hash else 'Link only' }}</span>
@@ -60,7 +61,7 @@
       {% if r.kind == 'group' %}
       <tr class="grouprow">
         <th scope="row">{{ r.name }}<span class="hint">group · {{ r.count }} calendar{{ '' if r.count == 1 else 's' }}</span></th>
-        {% for aid, aud in cfg.audiences.items() %}
+        {% for aid, aud in shared_audiences.items() %}
         {% set cur = aud.groups.get(r.id) %}
         <td>
           <select name="grp__{{ aid }}__{{ r.id }}" class="lvl-select" aria-label="Group {{ r.name }} for {{ aud.title }}">
@@ -71,12 +72,12 @@
         {% endfor %}
       </tr>
       {% elif r.kind == 'loose' %}
-      <tr class="grouprow loose"><th scope="row" colspan="{{ cfg.audiences | length + 1 }}">Not in a group</th></tr>
+      <tr class="grouprow loose"><th scope="row" colspan="{{ shared_audiences | length + 1 }}">Not in a group</th></tr>
       {% else %}
       {% set f = r.feed %}
       <tr{% if r.group %} class="member"{% endif %}>
         <th scope="row"><span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}</th>
-        {% for aid, aud in cfg.audiences.items() %}
+        {% for aid, aud in shared_audiences.items() %}
         {% set cur = aud.calendars.get(f.id) %}
         {% set gl = aud.groups.get(r.group) if r.group else none %}
         <td>
@@ -95,7 +96,7 @@
       {% endfor %}
       <tr class="defaults">
         <th scope="row">Default<span class="hint">for calendars set to &ldquo;Default&rdquo; and any you add later</span></th>
-        {% for aid, aud in cfg.audiences.items() %}
+        {% for aid, aud in shared_audiences.items() %}
         <td>
           <select name="default__{{ aid }}" aria-label="Default for {{ aud.title }}">
             {% for lv in LEVELS %}<option value="{{ lv }}" {% if aud.default.value == lv %}selected{% endif %}>{{ lv }}</option>{% endfor %}
@@ -105,7 +106,7 @@
       </tr>
       <tr class="meta">
         <th scope="row">Hours</th>
-        {% for aid, aud in cfg.audiences.items() %}
+        {% for aid, aud in shared_audiences.items() %}
         <td class="muted small">{% if aud.hours %}{% for d in aud.hours.days %}{{ DAY_LABELS[d] }}{{ ', ' if not loop.last }}{% endfor %}<br>{{ fmt_time(aud.hours.start) }}–{{ fmt_time(aud.hours.end) }}{% else %}Any time{% endif %} · <a href="/audiences/{{ aid }}?tab=see">edit</a></td>
         {% endfor %}
       </tr>

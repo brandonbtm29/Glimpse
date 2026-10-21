@@ -5,9 +5,13 @@
   <div>
     <p class="crumb"><a href="/sharing">Audiences</a> /</p>
     <h1>{{ aud.title }}</h1>
+    {% if aud.self_view %}
+    <p class="muted">Your own view: every calendar in full, wherever you are. {{ 'Password protected' if aud.password_hash else 'Locked until you set a password' }}.</p>
+    {% else %}
     <p class="muted">Can browse {{ range }} · {{ 'Password protected' if aud.password_hash else 'Anyone with the link' }}</p>
+    {% endif %}
   </div>
-  <a class="button secondary" href="/preview?view_as={{ aid }}">Preview what they see</a>
+  <a class="button secondary" href="/preview?view_as={{ aid }}">{{ 'Preview' if aud.self_view else 'Preview what they see' }}</a>
 </header>
 
 <nav class="tabs" aria-label="{{ aud.title }} settings">
@@ -17,16 +21,22 @@
 </nav>
 
 {% if tab == 'access' %}
-
+{% if aud.self_view and not aud.password_hash %}
+<p class="notice">Set a password below to switch on your page and phone subscription. Until then both links show &ldquo;not found&rdquo;.</p>
+{% endif %}
 <section class="panel">
-  <div class="panelhead"><h2>Shared link</h2><span class="muted small">Last opened {{ seen }}</span></div>
+  <div class="panelhead"><h2>{{ 'Your link' if aud.self_view else 'Shared link' }}</h2><span class="muted small">Last opened {{ seen }}</span></div>
   {% if not aud.shared_link %}<p class="notice">The shared link is switched off: only people with their own link (below) can open this page.</p>{% endif %}
   <div class="copyrow">
     <input type="text" readonly value="{{ link }}" aria-label="Page link">
     <button type="button" class="secondary small" data-copy="{{ link }}">Copy</button>
   </div>
   {% if feed %}
+  {% if aud.self_view %}
+  <p class="hint">One subscription for your phone with every calendar merged (it works without the password, so keep it private). Leave out calendars your phone already has under <a href="/audiences/{{ aid }}?tab=see">What you see</a>.</p>
+  {% else %}
   <p class="hint">Calendar-app subscription (works without the password, so share it like one):</p>
+  {% endif %}
   <div class="copyrow">
     <input type="text" readonly value="{{ feed }}" aria-label="Subscription link">
     <button type="button" class="secondary small" data-copy="{{ feed }}">Copy</button>
@@ -35,10 +45,11 @@
   <form method="post" action="/audiences/{{ aid }}/rotate" data-confirm="Make a new link? The current link (and subscription link) will stop working for everyone." class="inline-form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button type="submit" class="secondary small">Make a new link</button>
-    <span class="hint">Use this to cut off access. Send the new link to people who should keep it.</span>
+    <span class="hint">{{ 'If a link got out: the page and subscription get new addresses, so update your phone.' if aud.self_view else 'Use this to cut off access. Send the new link to people who should keep it.' }}</span>
   </form>
 </section>
 
+{% if not aud.self_view %}
 <section class="panel">
   <div class="panelhead"><h2>People</h2><a href="/people">Add or manage &rarr;</a></div>
   {% if people %}
@@ -58,10 +69,13 @@
   <p class="muted">Nobody has their own link yet. Personal links let you see who's looking, set an end date, and cut off one person without changing everyone's link.</p>
   {% endif %}
 </section>
+{% endif %}
 
 <section class="panel">
   <h2>Password</h2>
-  {% if aud.password_hash %}
+  {% if aud.self_view %}
+  <p class="muted">Required: this page shows everything, including private events. Use a different password from your settings panel. You stay signed in for 30 days on each device.</p>
+  {% elif aud.password_hash %}
   <p class="muted">This page asks for a password. Visitors stay signed in for 30 days; changing the password signs everyone out.</p>
   {% else %}
   <p class="muted">No password: anyone with the link can see this page. Fine for busy-only views; add one for anything more personal.</p>
@@ -75,7 +89,7 @@
       <input type="password" name="password2" minlength="8" autocomplete="new-password">
     </label>
     <button type="submit" name="action" value="set">{{ 'Change password' if aud.password_hash else 'Set password' }}</button>
-    {% if aud.password_hash %}
+    {% if aud.password_hash and not aud.self_view %}
     <button type="submit" name="action" value="remove" class="secondary" formnovalidate data-confirm="Remove the password? The link alone will open this page.">Remove password</button>
     {% endif %}
   </form>
@@ -85,23 +99,34 @@
 
 {% if tab == 'see' %}
 <section class="panel">
-  <h2>What they see</h2>
+  <h2>{{ 'What you see' if aud.self_view else 'What they see' }}</h2>
   <form method="post" action="/audiences/{{ aid }}" class="form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="rev" value="{{ rev }}">
     <div class="grid2">
       <label>Page title
         <input type="text" name="title" value="{{ aud.title }}" maxlength="60" required>
-        <span class="hint">Shown at the top of their page.</span>
+        <span class="hint">Shown at the top of {{ 'your' if aud.self_view else 'their' }} page.</span>
       </label>
+      {% if aud.self_view %}
+      <fieldset class="checks">
+        <legend>Calendars on your page</legend>
+        {% for f in feeds %}
+        <label class="check"><input type="checkbox" name="show_cal" value="{{ f.id }}" {% if aud.calendars.get(f.id) is none %}checked{% endif %}> <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}</label>
+        {% endfor %}
+        <span class="hint">All in full detail, including private events and ones caught by privacy rules.</span>
+      </fieldset>
+      {% else %}
       <label>Default level
         <select name="default">
           {% for lv in LEVELS %}<option value="{{ lv }}" {% if aud.default.value == lv %}selected{% endif %}>{{ lv }} &mdash; {{ LEVEL_HELP[lv] }}</option>{% endfor %}
         </select>
         <span class="hint">Per-calendar choices are on <a href="/sharing">Who sees what</a>.</span>
       </label>
+      {% endif %}
     </div>
 
+    {% if not aud.self_view %}
     <fieldset class="hours">
       <legend><label class="check"><input type="checkbox" name="limit_hours" {% if aud.hours %}checked{% endif %}> Only show certain days and hours</label></legend>
       <div class="days">
@@ -115,9 +140,10 @@
       </div>
       <p class="hint">Events outside these hours are left out; events crossing the edge are trimmed.</p>
     </fieldset>
+    {% endif %}
 
     <div class="grid2">
-      <label>Weeks ahead they can browse
+      <label>Weeks ahead {{ 'you' if aud.self_view else 'they' }} can browse
         <span class="inline weeks"><input type="number" name="weeks_ahead" min="0" max="{{ MAX_WEEKS }}" value="{{ aud.weeks_ahead if aud.weeks_ahead is not none else 4 }}"> <span class="check"><input type="checkbox" name="weeks_ahead_all" aria-label="All future weeks" {% if aud.weeks_ahead is none %}checked{% endif %}> All</span></span>
         <span class="hint">0 = only the current week.</span>
       </label>
@@ -128,7 +154,7 @@
     </div>
 
     <fieldset class="checks">
-      <legend>Views they can switch between</legend>
+      <legend>Views {{ 'you' if aud.self_view else 'they' }} can switch between</legend>
       {% if aud.views | length == 1 %}<p class="hint">Only one view is ticked, so their page has no view switcher. Tick more to let them change between week, month and longer views.</p>{% endif %}
       {% for v in ['day', 'week', 'month', 'quarter', 'year'] %}
       <label class="check"><input type="checkbox" name="view" value="{{ v }}" {% if v in aud.views %}checked{% endif %}> {{ view_help[v] }}</label>
@@ -151,20 +177,22 @@
     </div>
 
     <div class="checks">
+      {% if not aud.self_view %}
       {% if cfg.groups %}<label class="check"><input type="checkbox" name="group_names" {% if aud.group_names %}checked{% endif %}> Show group names instead of calendar names <span class="muted">(e.g. &ldquo;Work&rdquo; rather than &ldquo;Lab&rdquo; and &ldquo;Classes&rdquo;)</span></label>{% endif %}
       <label class="check"><input type="checkbox" name="shared_link" {% if aud.shared_link %}checked{% endif %}> Shared link works <span class="muted">(off: only people's own links work)</span></label>
+      {% endif %}
       <label class="check"><input type="checkbox" name="allow_excel" {% if aud.allow_excel %}checked{% endif %}> Allow &ldquo;Download as Excel&rdquo;</label>
       <label class="check"><input type="checkbox" name="allow_ics" {% if aud.allow_ics %}checked{% endif %}> Allow subscribing in a calendar app</label>
       {% if feeds %}
       <details class="help sub-check"{% if aud.feed_skip %} open{% endif %}>
         <summary>Leave calendars out of the subscription{% if aud.feed_skip %} ({{ aud.feed_skip | length }}){% endif %}</summary>
-        <p class="hint">For calendars they already have in their own calendar app, like a calendar you share with them in iCloud or Google. Otherwise those events show up twice there. Their Glimpse page still shows them.</p>
+        <p class="hint">{% if aud.self_view %}For calendars your phone already shows (say, your iCloud ones), so they don't appear twice. Your Glimpse page still shows them.{% else %}For calendars they already have in their own calendar app, like a calendar you share with them in iCloud or Google. Otherwise those events show up twice there. Their Glimpse page still shows them.{% endif %}</p>
         {% for f in feeds %}
         <label class="check"><input type="checkbox" name="feed_skip" value="{{ f.id }}" {% if f.id in aud.feed_skip %}checked{% endif %}> <span class="dot" style="--ev: {{ f.color }}"></span>{{ f.cal.name }}</label>
         {% endfor %}
       </details>
       {% endif %}
-      <label class="check"><input type="checkbox" name="show_all_day_busy" {% if aud.show_all_day_busy %}checked{% endif %}> Show all-day events as Busy <span class="muted">(off: birthdays and reminders don't block whole days)</span></label>
+      {% if not aud.self_view %}<label class="check"><input type="checkbox" name="show_all_day_busy" {% if aud.show_all_day_busy %}checked{% endif %}> Show all-day events as Busy <span class="muted">(off: birthdays and reminders don't block whole days)</span></label>{% endif %}
     </div>
     <div class="actions"><button type="submit">Save</button></div>
   </form>
@@ -303,7 +331,7 @@
 
 {% endif %}
 
-{% if tab == 'access' %}
+{% if tab == 'access' and not aud.self_view %}
 <section class="panel danger">
   <h2>Delete audience</h2>
   <p class="muted">The link stops working immediately{% if people %}, and so do the {{ people | length }} personal link{{ '' if people | length == 1 else 's' }} in it{% endif %}.</p>

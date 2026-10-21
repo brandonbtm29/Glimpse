@@ -242,6 +242,29 @@ class Draft:
         node["password_hash"] = None
         return aid
 
+    def ensure_self(self, title: str = "My calendar") -> str:
+        """Make your own view if it doesn't exist yet (first in the list). Returns its id."""
+        for aid, node in self.audiences.items():
+            if isinstance(node, dict) and node.get("self_view"):
+                return aid
+        aid = "me" if "me" not in self.audiences else make_id("my calendar", self.audiences)
+        node: dict[str, Any] = {
+            "title": title,
+            "self_view": True,
+            "default": "full",
+            "calendars": {},
+            "weeks_ahead": None,
+            "weeks_behind": None,
+            "views": ["day", "week", "month", "quarter", "year"],
+            "default_view": "week",
+            "allow_excel": True,
+            "allow_ics": True,
+        }
+        self.set_secret(node, "slug", new_slug(), _env_name("AUD", aid, "SLUG"))
+        node["password_hash"] = None
+        self.raw["audiences"] = {aid: node, **self.audiences}
+        return aid
+
     def remove_audience(self, aid: str) -> None:
         """Delete an audience and the people in it (their links stop working too)."""
         node = self.audiences.pop(aid, None)

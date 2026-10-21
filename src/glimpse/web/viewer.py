@@ -57,7 +57,9 @@ def resolve(cfg: AppConfig, kind: str, slug: str, today: date) -> Viewer | str |
     if kind == "a":
         for aid, aud in cfg.audiences.items():
             # compare every slug in constant time; don't stop early
-            if hmac.compare_digest(aud.slug.encode(), enc) and aud.shared_link:
+            # your own view stays locked until it has a password
+            usable = aud.shared_link and (aud.password_hash or not aud.self_view)
+            if hmac.compare_digest(aud.slug.encode(), enc) and usable:
                 found = Viewer("a", aud.slug, aid, aud)
     elif kind == "p":
         for pid, person in cfg.people.items():

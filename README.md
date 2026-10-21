@@ -38,6 +38,7 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **People with their own links**: put someone in an audience with a personal link. Move them between audiences, give the link an end date, see when they last looked, or cut off just them. Switch an audience's shared link off once everyone has their own.
 - **Day, week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
 - **Time zones**: viewers see your schedule in their own time (detected, or picked from a list), with your time a click away. Hour limits always stay on your clock.
+- **Your own view**: an automatic *My calendar* page with every calendar in full (private events included), behind its own password, plus one phone subscription that merges all your calendars.
 - **Glimpse calendars**: make calendars right in Glimpse (no other account needed), add one-off or repeating events in the panel, and share one as a subscription link for phones and calendar apps.
 - **Meeting requests and booking**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, or let open times be booked straight away. Confirmed meetings can land on a Glimpse calendar automatically, and there's an optional public booking page. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
 - **A new Zoom, Teams, Google Meet, Webex or Jitsi Meet meeting for every booking**: the person booking picks from the services you offer, each confirmed meeting gets its own link (shared only once it's confirmed), and cancelling deletes it. Or just use one fixed link.
@@ -171,6 +172,13 @@ Send the link and the password through different channels (e.g. link by email, p
 With **People**, each person gets their own link instead, so cutting off one person (or letting their link expire on a date) leaves everyone else's link alone. "Last viewed" times are kept in `state.json` beside your config, never in `config.yaml`.
 
 **Testing a link from outside:** under Settings › This computer, **Test from the internet** checks your share links the way someone without Tailscale opens them. If a link works there but not on your own laptop with Tailscale switched off, your laptop is still remembering the private Tailscale address: try a phone on mobile data, or clear the browser's DNS cache.
+
+### Your own view
+
+Glimpse makes a **My calendar** audience for you automatically; it's first under **Sharing** in the menu. It shows every calendar in full detail, including events marked private or caught by privacy rules, with no hours limit. It stays locked (its links say "not found") until you give it a password, which should be different from your settings-panel password.
+
+- **On any device:** its link works like any audience page, so you don't need Tailscale on.
+- **On your phone's calendar:** its subscription link merges Google, Outlook, iCloud and your Glimpse calendars into one. Under *What you see*, leave out calendars your phone already has so they don't show twice, or take a calendar off the page entirely.
 
 ### Glimpse calendars
 

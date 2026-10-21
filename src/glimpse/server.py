@@ -47,6 +47,11 @@ def run(
     if old:
         log.info("upgraded config.yaml from settings format %s (original kept as .v%s.bak)", old, old)
     cfg = load_config(config_path, env_path)
+    if cfg.self_audience is None:
+        cfg = store.update(
+            lambda d: d.ensure_self()
+        )  # your own "My calendar" view, locked until it has a password
+        log.info("added your own view (My calendar); set its password in the settings panel to use it")
     rt = Runtime(cfg, store)
     host = host or cfg.server.host
     port = port or cfg.server.port

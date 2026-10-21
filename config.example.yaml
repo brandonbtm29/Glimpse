@@ -107,6 +107,8 @@ rules:
 # `default` applies to any calendar not listed under `calendars` or `groups`.
 # ---------------------------------------------------------------------------
 audiences:
+  # Glimpse adds your own view here when it starts (`me`, "My calendar", self_view: true):
+  # every calendar in full, locked until you set its password in the settings panel.
   partner:
     title: "My week"
     slug: ${PARTNER_SLUG}

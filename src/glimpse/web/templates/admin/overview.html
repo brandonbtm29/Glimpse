@@ -43,6 +43,9 @@
 {% if pending_requests %}
 <p class="notice"><a href="/requests">{{ pending_requests }} meeting request{{ '' if pending_requests == 1 else 's' }}</a> waiting for your answer.</p>
 {% endif %}
+{% if cfg.self_audience and not cfg.self_audience[1].password_hash %}
+<p class="notice subtle">Your own view, <a href="/audiences/{{ cfg.self_audience[0] }}">{{ cfg.self_audience[1].title }}</a>, is ready: every calendar in one page and one phone subscription. Set its password to switch it on.</p>
+{% endif %}
 
 {% if local_base %}
 <p class="notice">Your public address is still set to <code>{{ cfg.server.base_url }}</code>, so the links below only work on this PC. Set your Tailscale Funnel address in <a href="/settings">Settings</a>.</p>
