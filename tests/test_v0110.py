@@ -37,11 +37,15 @@ def test_names_that_must_never_change():
     from kalends.web import admin, app, auth
 
     assert admin.COOKIE == "glimpse_admin" and app.TZ_COOKIE == "glimpse_tz"
-    src = Path(auth.__file__).read_text() + Path(app.__file__).read_text() + Path(admin.__file__).read_text()
+    src = (
+        Path(auth.__file__).read_text(encoding="utf-8")
+        + Path(app.__file__).read_text(encoding="utf-8")
+        + Path(admin.__file__).read_text(encoding="utf-8")
+    )
     for salt in ("glimpse-login", "glimpse-request-form", "glimpse-admin", "glimpse-video-sign-in"):
         assert f'"{salt}"' in src, salt
-    assert '"glimpse_" + hashlib' in Path(auth.__file__).read_text()
-    assert '@glimpse"' in Path(ics.__file__).read_text()
+    assert '"glimpse_" + hashlib' in Path(auth.__file__).read_text(encoding="utf-8")
+    assert '@glimpse"' in Path(ics.__file__).read_text(encoding="utf-8")
 
 
 def test_existing_secret_names_are_reused(config_path):
@@ -55,12 +59,12 @@ def test_existing_secret_names_are_reused(config_path):
     store.update(
         lambda d: d.set_secret(d.section("notify")["ntfy"], "topic", "new-topic", "KALENDS_NTFY_TOPIC")
     )
-    env = store.env_path.read_text()
+    env = store.env_path.read_text(encoding="utf-8")
     assert "GLIMPSE_NTFY_TOPIC='new-topic'" in env and "KALENDS_NTFY_TOPIC" not in env
     assert store.current().notify.ntfy.topic == "new-topic"
     # brand-new secrets get the new prefix
     store.update(lambda d: d.add_calendar("Gym", "https://example.com/gym.ics"))
-    assert "KALENDS_CAL_GYM_URL=" in store.env_path.read_text()
+    assert "KALENDS_CAL_GYM_URL=" in store.env_path.read_text(encoding="utf-8")
 
 
 def test_update_checks_follow_the_renamed_repository():
@@ -101,14 +105,12 @@ def test_windows_shortcuts_move_to_the_new_name(fake_windows, tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("x")
     assert autostart.migrate_legacy(cfg) == ["startup shortcut", "Start menu entry"]
-    assert (
-        not (startup / "Glimpse.lnk").exists()
-        and "kalends-service.exe" in (startup / "Kalends.lnk").read_text()
-    )
-    assert (
-        not old_menu.exists()
-        and "kalends-open.exe" in (programs / "Kalends" / "Kalends settings.lnk").read_text()
-    )
+    assert not (startup / "Glimpse.lnk").exists() and "kalends-service.exe" in (
+        startup / "Kalends.lnk"
+    ).read_text(encoding="utf-8")
+    assert not old_menu.exists() and "kalends-open.exe" in (
+        programs / "Kalends" / "Kalends settings.lnk"
+    ).read_text(encoding="utf-8")
     assert autostart.status().enabled and autostart.status().where.endswith("Kalends.lnk")
     assert autostart.migrate_legacy(cfg) == []  # nothing left to do
 
