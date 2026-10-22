@@ -9,11 +9,11 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from glimpse import autostart, service, tailscale
-from glimpse.config import load_config
-from glimpse.store import ConfigStore, ensure_setup_token, init_files
-from glimpse.web.admin import create_admin_app
-from glimpse.web.runtime import Runtime
+from kalends import autostart, service, tailscale
+from kalends.config import load_config
+from kalends.store import ConfigStore, ensure_setup_token, init_files
+from kalends.web.admin import create_admin_app
+from kalends.web.runtime import Runtime
 
 PW = "first-run-password-1"
 
@@ -47,7 +47,7 @@ def test_first_run_requires_token(fresh):
     assert c.get("/setup/start").status_code == 403
     assert c.get("/setup/start?token=wrong").status_code == 403
     r = c.get(f"/setup/start?token={token_of(rt)}")
-    assert r.status_code == 200 and "Welcome to Glimpse" in r.text
+    assert r.status_code == 200 and "Welcome to Kalends" in r.text
 
 
 def test_first_run_refuses_requests_through_tailscale(fresh):
@@ -66,7 +66,7 @@ def test_first_run_sets_password_and_retires_token(fresh):
     r = c.post("/setup/start", data={"token": tok, "password": PW, "password2": PW})
     assert r.status_code == 303 and r.headers["location"].startswith("/setup")
     assert rt.cfg.admin.password_hash and rt.cfg.admin.setup_token is None
-    assert "GLIMPSE_SETUP_TOKEN" not in (rt.store.config_path.parent / ".env").read_text()
+    assert "KALENDS_SETUP_TOKEN" not in (rt.store.config_path.parent / ".env").read_text()
     assert c.get("/setup").status_code == 200  # signed in by the wizard
     # the old token is useless now
     assert c.get(f"/setup/start?token={tok}").headers["location"] == "/login"
@@ -240,23 +240,23 @@ def test_linux_unit_and_mac_plist_text(tmp_path):
     unit = autostart._linux_unit_text(
         "/opt/g/.venv/bin/glimpse-service", ["-c", "/opt/g/config.yaml"], tmp_path
     )
-    assert "Restart=always" in unit and "GLIMPSE_SUPERVISED=1" in unit
+    assert "Restart=always" in unit and "KALENDS_SUPERVISED=1" in unit
     assert "ExecStart=/opt/g/.venv/bin/glimpse-service -c /opt/g/config.yaml" in unit
     plist = autostart._mac_plist_text(
-        "/Users/b/My Glimpse/.venv/bin/glimpse-service", ["-c", "x & y"], tmp_path
+        "/Users/b/My Kalends/.venv/bin/glimpse-service", ["-c", "x & y"], tmp_path
     )
-    assert "<string>x &amp; y</string>" in plist and "KeepAlive" in plist and "GLIMPSE_SUPERVISED" in plist
+    assert "<string>x &amp; y</string>" in plist and "KeepAlive" in plist and "KALENDS_SUPERVISED" in plist
 
 
 def test_windows_shortcut_script_quotes(monkeypatch, tmp_path):
     seen = {}
     monkeypatch.setattr(subprocess, "run", lambda args, **k: seen.setdefault("args", args))
     autostart.make_windows_shortcut(
-        tmp_path / "Glimpse.lnk",
-        r"C:\Users\Alex\GitHub Projects\glimpse\.venv\Scripts\glimpse-service.exe",
-        '-c "C:\\Users\\Alex\\GitHub Projects\\glimpse\\config.yaml"',
+        tmp_path / "Kalends.lnk",
+        r"C:\Users\Alex\GitHub Projects\kalends\.venv\Scripts\glimpse-service.exe",
+        '-c "C:\\Users\\Alex\\GitHub Projects\\kalends\\config.yaml"',
         r"C:\it's here",
-        "Glimpse",
+        "Kalends",
     )
     script = seen["args"][-1]
     assert "'C:\\it''s here'" in script  # single quotes doubled for PowerShell
@@ -283,23 +283,23 @@ def test_autostart_toggle_from_panel(signed_in, monkeypatch):
 
 def test_service_exits_quietly_when_already_running(fresh, monkeypatch):
     rt, _ = fresh
-    monkeypatch.setattr("glimpse.server.is_running", lambda cfg, timeout=1.5: True)
-    monkeypatch.delenv("GLIMPSE_SUPERVISED", raising=False)
+    monkeypatch.setattr("kalends.server.is_running", lambda cfg, timeout=1.5: True)
+    monkeypatch.delenv("KALENDS_SUPERVISED", raising=False)
     assert service.run_service(rt.store.config_path) == 0
-    log = (rt.store.config_path.parent / "logs" / "glimpse.log").read_text()
+    log = (rt.store.config_path.parent / "logs" / "kalends.log").read_text()
     assert "already running" in log
 
 
 def test_service_reports_broken_config(tmp_path, monkeypatch):
     p = tmp_path / "config.yaml"
     p.write_text("server: {}\n")
-    monkeypatch.delenv("GLIMPSE_SUPERVISED", raising=False)
+    monkeypatch.delenv("KALENDS_SUPERVISED", raising=False)
     assert service.run_service(p) == 2
-    assert "can't start" in (tmp_path / "logs" / "glimpse.log").read_text()
+    assert "can't start" in (tmp_path / "logs" / "kalends.log").read_text()
 
 
 def test_cli_init_setup_later(tmp_path):
-    from glimpse.cli import main
+    from kalends.cli import main
 
     cfg = tmp_path / "config.yaml"
     main(["-c", str(cfg), "init", "--setup-later"])
@@ -319,7 +319,7 @@ class _Resp:
 def test_check_public_paths(monkeypatch):
     import httpx
 
-    from glimpse import tailscale as t
+    from kalends import tailscale as t
 
     host = "pc.tail1234.ts.net"
     monkeypatch.setattr(t, "public_dns", lambda h: None)

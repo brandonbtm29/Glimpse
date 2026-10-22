@@ -1,12 +1,27 @@
 # Changelog
 
-All notable changes to Glimpse. Versions follow [Semantic Versioning](https://semver.org/):
+All notable changes to Kalends (called Glimpse until 0.11). Versions follow [Semantic Versioning](https://semver.org/):
 while Glimpse is below 1.0, new features bump the middle number and fixes bump the last.
 
 The settings panel checks this repository's GitHub releases for new versions; each release's
 notes come from the matching section below.
 
 ## [Unreleased]
+
+## [0.11.0] - 2026-10-22
+
+### Changed
+- **Glimpse is now Kalends.** The Kalends were the first day of each month in the Roman
+  calendar, and the word "calendar" comes from them. The panel, shared pages, emails,
+  notifications, installers and the command (`kalends`) all use the new name, and the
+  repository is now github.com/brandonbtm29/Kalends.
+- **Nothing breaks when you update.** Share links, people's links, phone subscriptions,
+  sign-ins, booked meetings and settings all carry on as before. The old `glimpse`,
+  `glimpse-service` and `glimpse-open` commands still work. On Windows, the next start swaps
+  the *Glimpse* startup shortcut and Start menu entry for *Kalends* ones; on macOS and Linux
+  the existing auto-start keeps working as it is.
+- New secrets in `.env` start with `KALENDS_`; existing `GLIMPSE_` ones keep working.
+- The log file is now `logs/kalends.log`.
 
 ## [0.10.0] - 2026-10-20
 

@@ -7,15 +7,15 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 from test_policy import SECRETS_FROM_COWORKERS
 
-from glimpse.web.app import create_app
-from glimpse.web.auth import feed_token
+from kalends.web.app import create_app
+from kalends.web.auth import feed_token
 
 W = WEEK.isoformat()
 
 
 @pytest.fixture
-def client(glimpse):
-    app = create_app(glimpse.cfg, glimpse=glimpse, background_refresh=False)
+def client(kalends):
+    app = create_app(kalends.cfg, kalends=kalends, background_refresh=False)
     return TestClient(app, follow_redirects=False)
 
 
@@ -41,8 +41,8 @@ def test_mid_week_date_redirects_to_week_start(client):
     assert r.status_code == 303 and r.headers["location"].endswith("/week/2026-10-26")
 
 
-def test_out_of_range_week_is_clamped(client, glimpse):
-    glimpse.cfg.audiences["coworkers"].weeks_ahead = 1
+def test_out_of_range_week_is_clamped(client, kalends):
+    kalends.cfg.audiences["coworkers"].weeks_ahead = 1
     r = client.get(f"/a/{COWORKER_SLUG}/week/2030-01-07")
     assert r.status_code == 303
 
@@ -108,28 +108,28 @@ def test_login_sets_cookie_and_shows_details(client):
     assert "Surprise" not in page.text and "Doctor" not in page.text
 
 
-def test_cookie_for_one_audience_does_not_open_another(client, glimpse):
-    from glimpse.web.auth import cookie_name, make_session
+def test_cookie_for_one_audience_does_not_open_another(client, kalends):
+    from kalends.web.auth import cookie_name, make_session
 
-    glimpse.cfg.audiences["coworkers"].password_hash = glimpse.cfg.audiences["partner"].password_hash
-    client.cookies.set(cookie_name("coworkers"), make_session(glimpse.cfg, "partner"))
+    kalends.cfg.audiences["coworkers"].password_hash = kalends.cfg.audiences["partner"].password_hash
+    client.cookies.set(cookie_name("coworkers"), make_session(kalends.cfg, "partner"))
     r = client.get(f"/a/{COWORKER_SLUG}/week/{W}")
     assert r.status_code == 303
 
 
 def test_tampered_cookie_rejected(client):
-    from glimpse.web.auth import cookie_name
+    from kalends.web.auth import cookie_name
 
     client.cookies.set(cookie_name("partner"), "eyJhIjoicGFydG5lciJ9.forged.sig")
     assert client.get(f"/a/{PARTNER_SLUG}/week/{W}").status_code == 303
 
 
-def test_changing_password_logs_everyone_out(client, glimpse):
+def test_changing_password_logs_everyone_out(client, kalends):
     login(client)
     assert client.get(f"/a/{PARTNER_SLUG}/week/{W}").status_code == 200
     from argon2 import PasswordHasher
 
-    glimpse.cfg.audiences["partner"].password_hash = PasswordHasher().hash("a new password")
+    kalends.cfg.audiences["partner"].password_hash = PasswordHasher().hash("a new password")
     assert client.get(f"/a/{PARTNER_SLUG}/week/{W}").status_code == 303
 
 
@@ -179,9 +179,9 @@ def test_excel_requires_login_for_partner(client):
     assert client.get(f"/a/{PARTNER_SLUG}/excel/{W}").status_code == 200
 
 
-def test_ics_feed_needs_token(client, glimpse):
+def test_ics_feed_needs_token(client, kalends):
     assert client.get(f"/a/{COWORKER_SLUG}/feed/wrongtoken.ics").status_code == 404
-    tok = feed_token(glimpse.cfg, "coworkers")
+    tok = feed_token(kalends.cfg, "coworkers")
     r = client.get(f"/a/{COWORKER_SLUG}/feed/{tok}.ics")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/calendar")
     cal = icalendar.Calendar.from_ical(r.content)
@@ -192,8 +192,8 @@ def test_ics_feed_needs_token(client, glimpse):
     assert b"@test" not in r.content  # original UIDs are not exposed
 
 
-def test_feed_token_is_audience_specific(glimpse):
-    assert feed_token(glimpse.cfg, "partner") != feed_token(glimpse.cfg, "coworkers")
+def test_feed_token_is_audience_specific(kalends):
+    assert feed_token(kalends.cfg, "partner") != feed_token(kalends.cfg, "coworkers")
 
 
 def test_healthz_reveals_no_names(client):
@@ -201,7 +201,7 @@ def test_healthz_reveals_no_names(client):
     assert r == {"ok": True, "feeds_ok": 4, "feeds_total": 4}
 
 
-def test_event_text_is_html_escaped(client, glimpse):
+def test_event_text_is_html_escaped(client, kalends):
     evil = (
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:x@test\r\n"
         "DTSTART;TZID=America/New_York:20261026T130000\r\n"
@@ -209,7 +209,7 @@ def test_event_text_is_html_escaped(client, glimpse):
         'SUMMARY:<script>alert(1)</script>"><img src=x onerror=alert(2)>\r\n'
         "LOCATION:<b>loc</b>\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
     )
-    st = glimpse.cache.states["personal"]
+    st = kalends.cache.states["personal"]
     st.text, st.version = evil, st.version + 1
     login(client)
     html = client.get(f"/a/{PARTNER_SLUG}/week/{W}").text

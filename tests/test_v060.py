@@ -1,5 +1,5 @@
 # ruff: noqa: F811 - the panel/store fixtures are imported from test_v050
-"""0.6.0: Glimpse calendars, sharing them, instant booking and meeting links."""
+"""0.6.0: Kalends calendars, sharing them, instant booking and meeting links."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from conftest import COWORKER_SLUG, PARTNER_PASSWORD, PARTNER_SLUG, WEEK
 from fastapi.testclient import TestClient
 from test_v050 import NOW, TZ, csrf_rev, enable_requests, form_token, panel, store  # noqa: F401
 
-from glimpse import localcal
-from glimpse.availability import open_slots
-from glimpse.core import week_range
-from glimpse.web.app import create_app
+from kalends import localcal
+from kalends.availability import open_slots
+from kalends.core import week_range
+from kalends.web.app import create_app
 
 NY = ZoneInfo(TZ)
 ZOOM = "https://zoom.us/j/1234567890?pwd=abc"
@@ -25,7 +25,7 @@ def public_for(rt):
     rt.notifier.owner = lambda *a, **k: None
     rt.notifier.requester = lambda *a, **k: None
     app = create_app(
-        rt.cfg, glimpse=rt.glimpse, background_refresh=False, requests=rt.requests, notifier=rt.notifier
+        rt.cfg, kalends=rt.kalends, background_refresh=False, requests=rt.requests, notifier=rt.notifier
     )
     return TestClient(app, follow_redirects=False)
 
@@ -124,7 +124,7 @@ def test_create_calendar_and_events_show_up_everywhere(panel, store):
     )
     store.update(enable_requests)
     rt.apply(store.current(), fetch=False)
-    starts = {s.start for s in open_slots(rt.glimpse, rt.cfg.audiences["coworkers"], 30, NOW)}
+    starts = {s.start for s in open_slots(rt.kalends, rt.cfg.audiences["coworkers"], 30, NOW)}
     assert datetime(2026, 10, 28, 12, 0, tzinfo=NY) not in starts
 
 
@@ -138,7 +138,7 @@ def test_edit_skip_and_delete_events(panel):
     csrf, _ = csrf_rev(c, f"/my-calendars/{cid}/events/{ev.uid}")
     c.post(f"/my-calendars/{cid}/events/{ev.uid}/skip", data={"csrf": csrf, "day": "2026-11-03"})
     s, e = week_range(date(2026, 11, 2), rt.cfg)
-    assert not [x for x in rt.glimpse.events_between(s, e) if x.calendar_id == cid]
+    assert not [x for x in rt.kalends.events_between(s, e) if x.calendar_id == cid]
     c.post(
         f"/my-calendars/{cid}/events/{ev.uid}",
         data={
@@ -287,7 +287,7 @@ def test_booking_page_books_instantly_with_link(panel):
         and item.calendar == cid
     )
     assert item.viewer == "b:coworkers"
-    # On the Glimpse calendar, so it shows up and blocks time.
+    # On the Kalends calendar, so it shows up and blocks time.
     evs = localcal.events(Path(rt.cfg.calendars[cid].url), NY)
     assert [e.title for e in evs] == ["Meeting with Dana"] and evs[0].location == ZOOM
     assert evs[0].source == f"request:{item.id}"
@@ -398,11 +398,11 @@ def test_my_calendars_pages_render(panel):
     cid = make_calendar(c)
     for path in (f"/my-calendars/{cid}", f"/calendars/{cid}", "/calendars", "/audiences/coworkers"):
         assert c.get(path).status_code == 200, path
-    assert "Glimpse calendar" in c.get("/calendars").text
+    assert "Kalends calendar" in c.get("/calendars").text
 
 
 def test_backups_include_glimpse_calendars(panel, tmp_path):
-    from glimpse import updates
+    from kalends import updates
 
     rt, c = panel
     cid = make_calendar(c)

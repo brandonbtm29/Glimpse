@@ -3,7 +3,7 @@ requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
 [project]
-name = "glimpse-calendar"
+name = "kalends"
 dynamic = ["version"]
 description = "Share a filtered, merged view of your Google, Outlook and iCloud calendars, with per-person detail levels and passwords."
 readme = "README.md"
@@ -38,26 +38,30 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/brandonbtm29/Glimpse"
-Changelog = "https://github.com/brandonbtm29/Glimpse/blob/main/CHANGELOG.md"
-Issues = "https://github.com/brandonbtm29/Glimpse/issues"
+Homepage = "https://github.com/brandonbtm29/Kalends"
+Changelog = "https://github.com/brandonbtm29/Kalends/blob/main/CHANGELOG.md"
+Issues = "https://github.com/brandonbtm29/Kalends/issues"
 
 [tool.hatch.version]
-path = "src/glimpse/__init__.py"
+path = "src/kalends/__init__.py"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
 
 [project.scripts]
-glimpse = "glimpse.cli:main"
+kalends = "kalends.cli:main"
+glimpse = "kalends.cli:main"  # the old name, kept for existing installs
 
 # No console window on Windows (run with pythonw): used by auto-start and the Start menu entry.
 [project.gui-scripts]
-glimpse-service = "glimpse.service:main"
-glimpse-open = "glimpse.service:main_open"
+kalends-service = "kalends.service:main"
+kalends-open = "kalends.service:main_open"
+# The old names, still used by shortcuts made before the rename to Kalends.
+glimpse-service = "kalends.service:main"
+glimpse-open = "kalends.service:main_open"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/glimpse"]
+packages = ["src/kalends", "src/glimpse"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -74,5 +78,5 @@ ignore = ["S101"] # asserts are fine in tests
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106", "S603", "S607"]
 # Updating runs git, pip, tasklist and taskkill with fixed arguments.
-"src/glimpse/update_helper.py" = ["S603", "S607"]
-"src/glimpse/updates.py" = ["S603", "S607"]
+"src/kalends/update_helper.py" = ["S603", "S607"]
+"src/kalends/updates.py" = ["S603", "S607"]

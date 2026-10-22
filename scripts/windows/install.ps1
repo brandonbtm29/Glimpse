@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-  Install or update Glimpse on Windows. Run by double-clicking "Install Glimpse.cmd".
+  Install or update Kalends on Windows. Run by double-clicking "Install Kalends.cmd".
 
 .DESCRIPTION
   No administrator rights needed. Safe to run again at any time (that's how you update):
     1. Finds Python 3.11+ (offers to install it with winget if missing)
-    2. Stops a running Glimpse from this folder, then installs/updates it in .venv
+    2. Stops a running Kalends from this folder, then installs/updates it in .venv
     3. Creates config.yaml + .env on first run (your settings are never overwritten)
-    4. Starts Glimpse automatically when you sign in, adds "Glimpse settings" to the Start menu
-    5. Starts Glimpse and opens the settings panel in your browser
+    4. Starts Kalends automatically when you sign in, adds "Kalends settings" to the Start menu
+    5. Starts Kalends and opens the settings panel in your browser
 #>
 param([switch]$NoOpen)
 $ErrorActionPreference = "Stop"
@@ -19,7 +19,7 @@ function Say($msg) { Write-Host "  $msg" }
 function Step($n, $msg) { Write-Host ""; Write-Host "[$n/5] $msg" -ForegroundColor Cyan }
 
 Write-Host ""
-Write-Host "  Glimpse installer" -ForegroundColor White
+Write-Host "  Kalends installer" -ForegroundColor White
 Write-Host "  Folder: $Root" -ForegroundColor DarkGray
 
 # --- 1. Python -------------------------------------------------------------------------------
@@ -65,10 +65,10 @@ if (-not $py) {
 Say "Using $py"
 
 # --- 2. Install / update -----------------------------------------------------------------------
-Step 2 "Installing Glimpse"
+Step 2 "Installing Kalends"
 
 $venv = Join-Path $Root ".venv"
-# Stop any Glimpse running from this folder so its files can be updated.
+# Stop any Kalends running from this folder so its files can be updated.
 $running = Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($venv, [StringComparison]::OrdinalIgnoreCase) }
 if ($running) {
     Say "Stopping the running copy so it can be updated..."
@@ -84,8 +84,8 @@ if (-not (Test-Path $venvPy)) {
 }
 & $venvPy -m pip install --upgrade pip --quiet --disable-pip-version-check
 & $venvPy -m pip install -e $Root --quiet --disable-pip-version-check
-if ($LASTEXITCODE -ne 0) { throw "Installing Glimpse's Python packages failed (see the messages above)." }
-$glimpse = Join-Path $venv "Scripts\glimpse.exe"
+if ($LASTEXITCODE -ne 0) { throw "Installing Kalends' Python packages failed (see the messages above)." }
+$kalends = Join-Path $venv "Scripts\kalends.exe"
 Say "Installed."
 
 # --- 3. Settings -----------------------------------------------------------------------------
@@ -94,7 +94,7 @@ $config = Join-Path $Root "config.yaml"
 if (Test-Path $config) {
     Say "Keeping your existing config.yaml and .env."
 } else {
-    & $glimpse -c $config init --setup-later | Out-Null
+    & $kalends -c $config init --setup-later | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Couldn't create config.yaml." }
     Say "Created config.yaml and .env. You'll choose a password in the browser."
 }
@@ -106,20 +106,20 @@ if (Test-Path $envFile) {
 
 # --- 4. Start automatically ------------------------------------------------------------------------
 Step 4 "Starting automatically when you sign in"
-& $glimpse -c $config autostart on
-Say "Start menu: Glimpse > Glimpse settings"
+& $kalends -c $config autostart on
+Say "Start menu: Kalends > Kalends settings"
 
 # --- 5. Start and open ------------------------------------------------------------------------
-Step 5 "Starting Glimpse"
+Step 5 "Starting Kalends"
 if ($NoOpen) {
-    Start-Process -FilePath (Join-Path $venv "Scripts\glimpse-service.exe") -ArgumentList @("-c", "`"$config`"") -WorkingDirectory $Root -WindowStyle Hidden
+    Start-Process -FilePath (Join-Path $venv "Scripts\kalends-service.exe") -ArgumentList @("-c", "`"$config`"") -WorkingDirectory $Root -WindowStyle Hidden
     Say "Started in the background."
 } else {
-    & $glimpse -c $config open
+    & $kalends -c $config open
 }
 
 Write-Host ""
-Write-Host "  Done. Glimpse is running in the background." -ForegroundColor Green
-Say "Settings: Start menu > Glimpse > Glimpse settings   (or http://127.0.0.1:8001)"
-Say "Logs:     $Root\logs\glimpse.log"
-Say "To update later: get the new version into this folder and run Install Glimpse again."
+Write-Host "  Done. Kalends is running in the background." -ForegroundColor Green
+Say "Settings: Start menu > Kalends > Kalends settings   (or http://127.0.0.1:8001)"
+Say "Logs:     $Root\logs\kalends.log"
+Say "To update later: get the new version into this folder and run Install Kalends again."

@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from argon2 import PasswordHasher
 
-from glimpse.config import load_config
-from glimpse.core import Glimpse
+from kalends.config import load_config
+from kalends.core import Kalends
 
 FIXTURES = Path(__file__).parent / "fixtures"
 WEEK = date(2026, 10, 26)  # Mon Oct 26 - Sun Nov 1 2026 (US DST ends Nov 1)
@@ -78,7 +78,7 @@ def cfg(config_path: Path):
 
 
 @pytest.fixture
-def glimpse(cfg) -> Glimpse:
-    g = Glimpse(cfg)
+def kalends(cfg) -> Kalends:
+    g = Kalends(cfg)
     g.cache.refresh_all()
     return g

@@ -2,7 +2,7 @@ import logging
 
 import httpx
 
-from glimpse.sources import FeedCache, normalize_url
+from kalends.sources import FeedCache, normalize_url
 
 SECRET_URL = "https://calendar.example.com/private-abc123SECRET/basic.ics"
 ICS = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"

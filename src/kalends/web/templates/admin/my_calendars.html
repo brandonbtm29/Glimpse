@@ -1,0 +1,39 @@
+{% extends "admin/base.html" %}
+{% block title %}My calendars · Kalends settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>My calendars</h1>
+    <p class="muted">Calendars you make right here in Kalends, with no Google, Outlook or iCloud account needed. Add events in the panel; they show up on your shared pages like any other calendar, can collect booked meetings, and can be shared as a subscription for phones and other calendar apps.</p>
+  </div>
+</header>
+
+{% if rows %}
+<section class="panel">
+  <table class="table">
+    <thead><tr><th>Calendar</th><th>Events</th><th>Subscription</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><span class="dot" style="--ev: {{ r.color }}"></span> <a href="/my-calendars/{{ r.id }}"><strong>{{ r.cal.name }}</strong></a></td>
+        <td class="muted">{{ r.upcoming }} upcoming{% if r.count > r.upcoming %} · {{ r.count - r.upcoming }} past{% endif %}</td>
+        <td>{% if r.share_url %}<span class="status ok">Shared</span>{% else %}<span class="muted">Not shared</span>{% endif %}</td>
+        <td class="right"><a class="button secondary small" href="/my-calendars/{{ r.id }}">Open</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>{{ 'New calendar' if rows else 'Make your first Kalends calendar' }}</h2>
+  {% if not rows %}<p class="muted">For example &ldquo;Plans&rdquo; for things you and your partner set up, or &ldquo;Office hours&rdquo; to collect meetings people book with you.</p>{% endif %}
+  <form method="post" action="/my-calendars/add" class="form inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name <input type="text" name="name" maxlength="60" placeholder="Plans" required></label>
+    <label>Colour <input type="color" name="color" value="{{ color }}"></label>
+    <button type="submit">Create calendar</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,7 +1,7 @@
 # Demo config: runs entirely from the local files in ./calendars.
 # Nothing here is secret, so values are written inline instead of in .env.
 #
-#   glimpse -c examples/demo/config.yaml serve
+#   kalends -c examples/demo/config.yaml serve
 #
 # Then open:
 #   Partner (password "demo-password"): http://127.0.0.1:8000/a/demo-partner-link-000

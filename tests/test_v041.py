@@ -12,13 +12,13 @@ from argon2 import PasswordHasher
 from conftest import COWORKER_SLUG, PARTNER_PASSWORD, PARTNER_SLUG, WEEK
 from fastapi.testclient import TestClient
 
-from glimpse.config import ConfigError
-from glimpse.core import Glimpse
-from glimpse.policy import BUSY_TITLE
-from glimpse.store import ConfigStore
-from glimpse.web.admin import PALETTE_HEX, create_admin_app
-from glimpse.web.app import create_app
-from glimpse.web.runtime import Runtime
+from kalends.config import ConfigError
+from kalends.core import Kalends
+from kalends.policy import BUSY_TITLE
+from kalends.store import ConfigStore
+from kalends.web.admin import PALETTE_HEX, create_admin_app
+from kalends.web.app import create_app
+from kalends.web.runtime import Runtime
 
 W = WEEK.isoformat()
 ADMIN_PW = "admin-password-123"
@@ -32,10 +32,10 @@ def store(config_path):
 def public(store, mutate=None):
     if mutate:
         store.update(mutate)
-    g = Glimpse(store.current())
+    g = Kalends(store.current())
     g.cache.refresh_all()
     g.today = lambda: WEEK
-    return g, TestClient(create_app(g.cfg, glimpse=g, background_refresh=False), follow_redirects=False)
+    return g, TestClient(create_app(g.cfg, kalends=g, background_refresh=False), follow_redirects=False)
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def panel(store):
             d.section("admin"),
             "password_hash",
             PasswordHasher().hash(ADMIN_PW),
-            "GLIMPSE_ADMIN_PASSWORD_HASH",
+            "KALENDS_ADMIN_PASSWORD_HASH",
         )
     )
     store.update(lambda d: d.section("admin").__setitem__("secure_cookies", False))
@@ -242,5 +242,5 @@ def test_download_links_and_headers(store):
 def test_about_and_get_your_own(store):
     g, c = public(store, lambda d: d.raw.__setitem__("owner_name", "Brandon"))
     html = c.get(f"/a/{COWORKER_SLUG}/week/{W}").text
-    assert "<summary>About Glimpse</summary>" in html and "Brandon chose how much you see" in html
-    assert 'href="https://github.com/brandonbtm29/Glimpse"' in html and "Get started with Glimpse" in html
+    assert "<summary>About Kalends</summary>" in html and "Brandon chose how much you see" in html
+    assert 'href="https://github.com/brandonbtm29/Kalends"' in html and "Get started with Kalends" in html

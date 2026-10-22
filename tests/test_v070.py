@@ -16,9 +16,9 @@ from conftest import COWORKER_SLUG
 from test_v050 import NOW, TZ, csrf_rev, form_token, make_request, panel, store  # noqa: F401
 from test_v060 import public_for
 
-from glimpse import conferencing
-from glimpse.availability import open_slots
-from glimpse.config import ConfigError
+from kalends import conferencing
+from kalends.availability import open_slots
+from kalends.config import ConfigError
 
 SECRET = "zoom-secret-value-123"
 G_SECRET = "google-secret-value-456"
@@ -30,7 +30,7 @@ def id_token(**claims) -> str:
 
 
 class Services:
-    """Pretends to be Zoom, Microsoft and Google, and records what Glimpse asked for."""
+    """Pretends to be Zoom, Microsoft and Google, and records what Kalends asked for."""
 
     def __init__(self):
         self.calls: list[httpx.Request] = []
@@ -129,7 +129,7 @@ def setup_zoom(rt, **extra):
         node.update(
             {"enabled": True, "account_id": "acct1", "client_id": "cid1", "user": "me@example.com"} | extra
         )
-        d.set_secret(node, "client_secret", SECRET, "GLIMPSE_ZOOM_CLIENT_SECRET")
+        d.set_secret(node, "client_secret", SECRET, "KALENDS_ZOOM_CLIENT_SECRET")
 
     rt.apply(rt.store.update(mutate), fetch=False)
 
@@ -138,10 +138,10 @@ def setup_google(rt):
     def mutate(d):
         node = d.section("video_calls").setdefault("google", {})
         node.update({"enabled": True, "client_id": "gcid.apps.googleusercontent.com"})
-        d.set_secret(node, "client_secret", G_SECRET, "GLIMPSE_GOOGLE_CLIENT_SECRET")
+        d.set_secret(node, "client_secret", G_SECRET, "KALENDS_GOOGLE_CLIENT_SECRET")
 
     rt.apply(rt.store.update(mutate), fetch=False)
-    rt.glimpse.video.accounts.set(
+    rt.kalends.video.accounts.set(
         "google",
         {"refresh_token": "g-rt", "client_id": "gcid.apps.googleusercontent.com", "account": "b@gmail.com"},
     )
@@ -153,7 +153,7 @@ def setup_teams(rt, sign_in=True):
 
     rt.apply(rt.store.update(mutate), fetch=False)
     if sign_in:
-        rt.glimpse.video.accounts.set(
+        rt.kalends.video.accounts.set(
             "teams", {"refresh_token": "ms-rt", "client_id": "ms-app-id", "account": "bm@uakron.edu"}
         )
 
@@ -308,7 +308,7 @@ def test_requester_picks_teams_and_owner_accepts(panel, services):
     made = services.hits("POST", f"{conferencing.GRAPH}/me/onlineMeetings")[0]
     assert json.loads(made.content)["subject"] == "Meeting with Dana"
     # Microsoft rotated the refresh token; the new one is kept
-    assert rt.glimpse.video.accounts.get("teams")["refresh_token"] == "ms-rt-2"
+    assert rt.kalends.video.accounts.get("teams")["refresh_token"] == "ms-rt-2"
     csrf, _ = csrf_rev(c, "/requests")
     c.post(f"/requests/{item.id}/answer", data={"csrf": csrf, "action": "cancel"})
     assert services.hits("DELETE", f"{conferencing.GRAPH}/me/onlineMeetings/teams-1")
@@ -318,7 +318,7 @@ def test_owner_can_send_their_own_link_instead(panel, services):
     rt, c = panel
     setup_google(rt)
     offer(rt, ["google"])
-    free = open_slots(rt.glimpse, rt.cfg.audiences["coworkers"], 30, NOW)[0]
+    free = open_slots(rt.kalends, rt.cfg.audiences["coworkers"], 30, NOW)[0]
     item = make_request(rt, start=free.start.isoformat(), end=free.end.isoformat(), platform="google")
     rt.notifier.requester = lambda *a, **k: None
     csrf, _ = csrf_rev(c, "/requests")
@@ -339,13 +339,13 @@ def test_owner_can_send_their_own_link_instead(panel, services):
 def test_google_meet_space_and_access(panel, services):
     rt, _ = panel
     setup_google(rt)
-    m = rt.glimpse.video.create("google", "Test", NOW, NOW.replace(hour=13), "")
+    m = rt.kalends.video.create("google", "Test", NOW, NOW.replace(hour=13), "")
     assert m.url == "https://meet.google.com/abc-defg-hij" and m.id == "spaces/abc"
     req = services.hits("POST", f"{conferencing.MEET_API}/spaces")[0]
     assert json.loads(req.content) == {"config": {"accessType": "TRUSTED"}}
     refresh = services.hits("POST", conferencing.GOOGLE_TOKEN)[0]
     assert b"grant_type=refresh_token" in refresh.content
-    rt.glimpse.video.delete("google", m.id)  # nothing to delete on Google; no call made
+    rt.kalends.video.delete("google", m.id)  # nothing to delete on Google; no call made
     assert not [c for c in services.calls if c.method == "DELETE"]
 
 
@@ -355,7 +355,7 @@ def test_google_meet_space_and_access(panel, services):
 def test_google_sign_in_round_trip(panel, services):
     rt, c = panel
     setup_google(rt)
-    rt.glimpse.video.accounts.drop("google")
+    rt.kalends.video.accounts.drop("google")
     html = c.get("/video-calls").text
     assert "Sign in with Google" in html and "/video-calls/google/callback" in html
     csrf, _ = csrf_rev(c, "/video-calls")
@@ -369,32 +369,32 @@ def test_google_sign_in_round_trip(panel, services):
     )
     # a made-up state is refused, so no one can attach their own account with a link
     bad = c.get("/video-calls/google/callback?state=forged&code=x")
-    assert "signin_stale" in bad.headers["location"] and not rt.glimpse.video.accounts.get("google")
+    assert "signin_stale" in bad.headers["location"] and not rt.kalends.video.accounts.get("google")
     ok = c.get(f"/video-calls/google/callback?state={q['state'][0]}&code=auth-code")
     assert "google_on" in ok.headers["location"]
-    acct = rt.glimpse.video.accounts.get("google")
+    acct = rt.kalends.video.accounts.get("google")
     assert acct["refresh_token"] == "g-rt" and acct["account"] == "brandon@gmail.com"
-    assert rt.glimpse.video.ready("google")
+    assert rt.kalends.video.ready("google")
     saved = (rt.store.config_path.parent / conferencing.FILE).read_text()
     assert "g-rt" in saved and "g-rt" not in rt.store.config_path.read_text()
     assert "brandon@gmail.com" in c.get("/video-calls").text
     csrf, _ = csrf_rev(c, "/video-calls")
     c.post("/video-calls/google/disconnect", data={"csrf": csrf})
-    assert not rt.glimpse.video.ready("google") and services.hits("POST", conferencing.GOOGLE_REVOKE)
+    assert not rt.kalends.video.ready("google") and services.hits("POST", conferencing.GOOGLE_REVOKE)
 
 
 def test_teams_device_sign_in(panel, services, monkeypatch):
     rt, c = panel
     setup_teams(rt, sign_in=False)
-    assert rt.glimpse.video.status("teams") == "sign_in"
+    assert rt.kalends.video.status("teams") == "sign_in"
     csrf, _ = csrf_rev(c, "/video-calls")
     c.post("/video-calls/teams/connect", data={"csrf": csrf})
     html = c.get("/video-calls").text  # first check: still waiting
     assert "ABCD-1234" in html and 'http-equiv="refresh"' in html
-    rt.glimpse.video.pending_teams["next"] = 0
+    rt.kalends.video.pending_teams["next"] = 0
     r = c.get("/video-calls")
     assert r.status_code == 303 and "teams_on" in r.headers["location"]
-    assert rt.glimpse.video.ready("teams") and rt.glimpse.video.account("teams") == "bm@uakron.edu"
+    assert rt.kalends.video.ready("teams") and rt.kalends.video.account("teams") == "bm@uakron.edu"
     poll = [x for x in services.calls if "/oauth2/v2.0/token" in str(x.url)][-1]
     assert b"device_code=dev-code" in poll.content and "/organizations/" in str(poll.url)
 
@@ -430,7 +430,7 @@ def test_accounts_file_survives_restart(tmp_path: Path):
 
 
 def test_backups_include_sign_ins(tmp_path: Path):
-    from glimpse.updates import backup_settings
+    from kalends.updates import backup_settings
 
     cfgp = tmp_path / "config.yaml"
     cfgp.write_text("x")

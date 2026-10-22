@@ -1,0 +1,57 @@
+{% extends "admin/base.html" %}
+{% block title %}People · Kalends settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>People</h1>
+    <p class="muted">Give someone their own link inside an audience. Move them to change what they see, set an end date, or cut off just them.</p>
+  </div>
+</header>
+
+{% if rows %}
+<section class="panel">
+  <table class="table">
+    <thead><tr><th>Name</th><th>Audience</th><th>Status</th><th>Password</th><th>Last viewed</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><strong>{{ r.p.name }}</strong>{% if r.p.note %}<br><span class="muted small">{{ r.p.note }}</span>{% endif %}</td>
+        <td><a href="/audiences/{{ r.p.audience }}">{{ r.aud.title }}</a></td>
+        <td><span class="status {{ 'ok' if r.status[0] == 'ok' else 'bad' }}">{{ r.status[1] }}</span></td>
+        <td class="muted">{{ {'own': 'Their own', 'audience': "Audience's", 'none': 'None'}[r.password] }}</td>
+        <td class="muted">{{ r.seen }}</td>
+        <td class="right nowrap">
+          <button type="button" class="secondary small" data-copy="{{ r.link }}">Copy link</button>
+          <a class="button secondary small" href="/people/{{ r.id }}">Edit</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Add a person</h2>
+  {% if not cfg.audiences %}
+  <p class="muted">Create an audience on <a href="/sharing">Who sees what</a> first.</p>
+  {% else %}
+  <form method="post" action="/people/add" class="form inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name
+      <input type="text" name="name" value="{{ form.name }}" placeholder="Alex" maxlength="60" required>
+    </label>
+    <label>Sees what this audience sees
+      <select name="audience">
+        {% for aid, a in shared_audiences.items() %}<option value="{{ aid }}" {% if form.audience == aid %}selected{% endif %}>{{ a.title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label><span>Link works until <span class="muted">(optional)</span></span>
+      <input type="date" name="expires" value="{{ form.expires }}">
+    </label>
+    <button type="submit">Add</button>
+  </form>
+  <p class="fine">Each person's link is separate from the audience's shared link. You can switch the shared link off on the audience's page once everyone has their own.</p>
+  {% endif %}
+</section>
+{% endblock %}

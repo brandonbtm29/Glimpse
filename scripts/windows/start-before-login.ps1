@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-  Optional, advanced: run Glimpse at boot even before anyone signs in to Windows.
+  Optional, advanced: run Kalends at boot even before anyone signs in to Windows.
 
 .DESCRIPTION
-  The normal installer starts Glimpse when you sign in, which needs no admin rights.
+  The normal installer starts Kalends when you sign in, which needs no admin rights.
   If this PC sometimes restarts (e.g. for updates) and sits at the sign-in screen,
-  this registers a Task Scheduler task that starts Glimpse at boot instead.
-  Needs an administrator PowerShell. Run "Install Glimpse" first.
+  this registers a Task Scheduler task that starts Kalends at boot instead.
+  Needs an administrator PowerShell. Run "Install Kalends" first.
 
       powershell -ExecutionPolicy Bypass -File scripts\windows\start-before-login.ps1
 #>
@@ -18,16 +18,16 @@ if (-not $isAdmin) {
     exit 1
 }
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$svc = Join-Path $Root ".venv\Scripts\glimpse-service.exe"
+$svc = Join-Path $Root ".venv\Scripts\kalends-service.exe"
 $config = Join-Path $Root "config.yaml"
-if (-not (Test-Path $svc)) { throw "Run 'Install Glimpse' first ($svc not found)." }
+if (-not (Test-Path $svc)) { throw "Run 'Install Kalends' first ($svc not found)." }
 
 $action    = New-ScheduledTaskAction -Execute $svc -Argument "-c `"$config`"" -WorkingDirectory $Root
 $trigger   = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Limited
 $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
     -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName "Glimpse" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
-Write-Host "Done: Glimpse will also start at boot, before sign-in." -ForegroundColor Green
+Register-ScheduledTask -TaskName "Kalends" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+Write-Host "Done: Kalends will also start at boot, before sign-in." -ForegroundColor Green
 Write-Host "(When you sign in, the normal auto-start sees it's already running and does nothing.)"
-Write-Host "Undo with: Unregister-ScheduledTask -TaskName Glimpse"
+Write-Host "Undo with: Unregister-ScheduledTask -TaskName Kalends"

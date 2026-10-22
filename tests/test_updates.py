@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from glimpse import __version__, migrations, update_helper, updates
-from glimpse.config import CONFIG_VERSION, ConfigError, load_config
-from glimpse.store import ConfigStore
+from kalends import __version__, migrations, update_helper, updates
+from kalends.config import CONFIG_VERSION, ConfigError, load_config
+from kalends.store import ConfigStore
 
 GIT = shutil.which("git")
 PANEL_PW = "admin-password-123"
@@ -26,7 +26,7 @@ needs_git = pytest.mark.skipif(GIT is None, reason="git not installed")
 def test_version_is_single_sourced():
     from importlib.metadata import version
 
-    assert version("glimpse-calendar") == __version__
+    assert version("kalends") == __version__
     assert updates.parse_version(__version__) is not None
 
 
@@ -103,7 +103,7 @@ def test_upgrade_keeps_existing_rules(config_path):
 
 
 def test_new_installs_start_with_suggested_rules(tmp_path):
-    from glimpse.store import init_files
+    from kalends.store import init_files
 
     init_files(tmp_path / "config.yaml")
     cfg = load_config(tmp_path / "config.yaml")
@@ -129,11 +129,11 @@ def test_checker_caches_for_a_day_and_persists(tmp_path):
     state = tmp_path / "check.json"
     c = updates.UpdateChecker(fetch=fetch, state_path=state)
     assert c.due()
-    r = c.check("me/Glimpse")
-    assert r.update_available and calls == ["me/Glimpse"]
-    c.check("me/Glimpse")
+    r = c.check("me/Kalends")
+    assert r.update_available and calls == ["me/Kalends"]
+    c.check("me/Kalends")
     assert len(calls) == 1  # cached
-    c.check("me/Glimpse", force=True)
+    c.check("me/Kalends", force=True)
     assert len(calls) == 2
     again = updates.UpdateChecker(fetch=fetch, state_path=state)
     assert again.last.release.version == "9.9.0" and not again.due()
@@ -166,7 +166,7 @@ def test_latest_release_parses_github(monkeypatch):
         def json(self):
             return {
                 "tag_name": "v0.4.0",
-                "name": "Glimpse 0.4.0",
+                "name": "Kalends 0.4.0",
                 "body": "notes",
                 "html_url": "h",
                 "published_at": "2026-11-02T10:00:00Z",
@@ -174,8 +174,8 @@ def test_latest_release_parses_github(monkeypatch):
 
     seen = {}
     monkeypatch.setattr(httpx, "get", lambda url, **kw: seen.setdefault("url", url) and R())
-    r = updates.latest_release("brandonbtm29/Glimpse")
-    assert seen["url"] == "https://api.github.com/repos/brandonbtm29/Glimpse/releases/latest"
+    r = updates.latest_release("brandonbtm29/Kalends")
+    assert seen["url"] == "https://api.github.com/repos/brandonbtm29/Kalends/releases/latest"
     assert (r.version, r.tag, r.published) == ("0.4.0", "v0.4.0", "2026-11-02")
 
 
@@ -227,7 +227,7 @@ def run_helper(clone, tmp_path, validate_ok=True, extra=()):
     cfg.write_text("x: 1\n")
     result = tmp_path / "result.json"
     fake_python = tmp_path / "fakepy.py"
-    # Stands in for "python -m glimpse.cli validate" (and pip): exit 0 or 1.
+    # Stands in for "python -m kalends.cli validate" (and pip): exit 0 or 1.
     fake_python.write_text(f"import sys; sys.exit({0 if validate_ok else 1})\n")
     wrapper = tmp_path / ("fakepy.cmd" if sys.platform == "win32" else "fakepy.sh")
     if sys.platform == "win32":
@@ -308,8 +308,8 @@ def panel(config_path, monkeypatch):
     from argon2 import PasswordHasher
     from fastapi.testclient import TestClient
 
-    from glimpse.web.admin import create_admin_app
-    from glimpse.web.runtime import Runtime
+    from kalends.web.admin import create_admin_app
+    from kalends.web.runtime import Runtime
 
     store = ConfigStore(config_path)
     store.update(
@@ -317,7 +317,7 @@ def panel(config_path, monkeypatch):
             d.section("admin"),
             "password_hash",
             PasswordHasher().hash(PANEL_PW),
-            "GLIMPSE_ADMIN_PASSWORD_HASH",
+            "KALENDS_ADMIN_PASSWORD_HASH",
         )
     )
     store.update(lambda d: d.section("admin").__setitem__("secure_cookies", False))
@@ -333,11 +333,11 @@ def panel(config_path, monkeypatch):
 
 def test_panel_shows_version_and_available_update(panel):
     rt, c, csrf = panel
-    assert f"Glimpse {__version__}" in c.get("/").text
+    assert f"Kalends {__version__}" in c.get("/").text
     c.post("/setup/updates/check", data={"csrf": csrf})
     assert rt.updates.last.update_available
     html = c.get("/").text
-    assert "Glimpse 9.0.0 is available" in html
+    assert "Kalends 9.0.0 is available" in html
     setup = c.get("/setup").text
     assert "Version 9.0.0 available" in setup and "New things" in setup
 
@@ -408,7 +408,7 @@ def test_result_file_is_shown(panel):
 
 
 def test_release_notes_are_escaped():
-    from glimpse.web.admin import release_notes
+    from kalends.web.admin import release_notes
 
     html = str(release_notes("### Added\n- **People** links\n- <script>x</script> `code`"))
     assert "<b class='nh'>Added</b>" in html and "• <b>People</b> links" in html

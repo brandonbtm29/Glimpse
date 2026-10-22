@@ -5,11 +5,11 @@ from argon2 import PasswordHasher
 from conftest import COWORKER_SLUG, FIXTURES, PARTNER_PASSWORD, PARTNER_SLUG, WEEK
 from fastapi.testclient import TestClient
 
-from glimpse.config import Level
-from glimpse.store import ConfigStore
-from glimpse.web.admin import create_admin_app, mask_url
-from glimpse.web.app import create_app
-from glimpse.web.runtime import Runtime
+from kalends.config import Level
+from kalends.store import ConfigStore
+from kalends.web.admin import create_admin_app, mask_url
+from kalends.web.app import create_app
+from kalends.web.runtime import Runtime
 
 ADMIN_PW = "admin-password-123"
 
@@ -19,7 +19,7 @@ def rt(config_path):
     store = ConfigStore(config_path)
     h = PasswordHasher().hash(ADMIN_PW)
     cfg = store.update(
-        lambda d: d.set_secret(d.section("admin"), "password_hash", h, "GLIMPSE_ADMIN_PASSWORD_HASH")
+        lambda d: d.set_secret(d.section("admin"), "password_hash", h, "KALENDS_ADMIN_PASSWORD_HASH")
     )
     cfg_secure_off = store.update(lambda d: d.section("admin").__setitem__("secure_cookies", False))
     r = Runtime(cfg_secure_off, store)
@@ -36,7 +36,7 @@ def admin(rt):
 @pytest.fixture
 def public(rt):
     return TestClient(
-        create_app(rt.cfg, glimpse=rt.glimpse, background_refresh=False), follow_redirects=False
+        create_app(rt.cfg, kalends=rt.kalends, background_refresh=False), follow_redirects=False
     )
 
 
@@ -64,7 +64,7 @@ def test_locked_until_admin_password_set(config_path):
     store = ConfigStore(config_path)
     rt = Runtime(store.current(), store)
     c = TestClient(create_admin_app(rt))
-    assert "glimpse open" in c.get("/login").text
+    assert "kalends open" in c.get("/login").text
     assert c.post("/login", data={"password": "anything"}).status_code == 200  # setup page, no session
     assert "glimpse_admin" not in c.cookies
 
@@ -132,7 +132,7 @@ def test_add_calendar_goes_live(admin, rt):
     )
     assert r.status_code == 303 and "ok=cal_added" in r.headers["location"]
     assert "side_work" in rt.cfg.calendars
-    assert rt.glimpse.cache.states["side_work"].text  # fetched right away
+    assert rt.kalends.cache.states["side_work"].text  # fetched right away
     assert "Side work" in admin.get("/calendars").text
 
 
@@ -394,7 +394,7 @@ def test_people_page_add_edit_password_delete(admin, rt, public):
 
     admin.post("/people/alex/delete", data={"csrf": c})
     assert rt.cfg.people == {}
-    assert "GLIMPSE_PERSON_ALEX" not in rt.store.env_path.read_text()
+    assert "KALENDS_PERSON_ALEX" not in rt.store.env_path.read_text()
 
 
 def test_people_add_validation(admin):
@@ -460,7 +460,7 @@ def test_owner_name_setting(admin, rt):
 
 
 def test_check_public_route(admin, monkeypatch):
-    from glimpse import tailscale
+    from kalends import tailscale
 
     c = sign_in(admin)
     monkeypatch.setattr(

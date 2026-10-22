@@ -1,28 +1,28 @@
-# Glimpse configuration.
+# Kalends configuration.
 #
 # Copy this file to config.yaml (which git ignores) and edit it.
 # Anything secret is written as ${NAME} and filled in from .env, so this file
 # never needs to contain a feed link, slug, password or key.
 #
-# Check your work any time with:   glimpse check
-# See what someone will see with:  glimpse preview --audience coworkers
+# Check your work any time with:   kalends check
+# See what someone will see with:  kalends preview --audience coworkers
 
 timezone: America/New_York        # any IANA time zone name
 refresh_minutes: 10               # how often feeds are re-downloaded
 week_starts: monday               # or sunday
 
 server:
-  host: 127.0.0.1                 # keep this: only the tunnel should reach Glimpse
+  host: 127.0.0.1                 # keep this: only the tunnel should reach Kalends
   port: 8000
-  base_url: ${GLIMPSE_BASE_URL}   # your public address, e.g. https://my-pc.tail1234.ts.net
-  secret_key: ${GLIMPSE_SECRET_KEY}
+  base_url: ${KALENDS_BASE_URL}   # your public address, e.g. https://my-pc.tail1234.ts.net
+  secret_key: ${KALENDS_SECRET_KEY}
 
 # The settings panel (http://127.0.0.1:8001). Publish it to your own devices with
 #   tailscale serve --bg --https=8443 http://127.0.0.1:8001
-# Set its password with `glimpse admin-password`.
+# Set its password with `kalends admin-password`.
 admin:
   port: 8001
-  password_hash: ${GLIMPSE_ADMIN_PASSWORD_HASH}
+  password_hash: ${KALENDS_ADMIN_PASSWORD_HASH}
   allowed_tailscale_users: []       # e.g. [you@example.com] to limit it to your Tailscale login
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ admin:
 #   name   shown in the legend and in full/title views
 #   label  shown instead of the title at the `label` level (default: name)
 #   color  optional hex colour, e.g. "#2f9e44"
-#   local  true for a Glimpse calendar made on the My calendars page (url is then its
+#   local  true for a Kalends calendar made on the My calendars page (url is then its
 #          .ics file in local-calendars/; share: true + share_slug gives it a subscription link)
 #   marker optional shape on its events and in the legend: circle, square, triangle,
 #          diamond, star, ring, cross, heart, or an emoji such as "🎓"
@@ -51,7 +51,7 @@ calendars:
   family:
     name: Family
     url: ${ICLOUD_FAMILY_ICS}
-  office_hours:                         # a Glimpse calendar (made on My calendars)
+  office_hours:                         # a Kalends calendar (made on My calendars)
     name: Office hours
     url: local-calendars/office_hours.ics
     local: true
@@ -107,7 +107,7 @@ rules:
 # `default` applies to any calendar not listed under `calendars` or `groups`.
 # ---------------------------------------------------------------------------
 audiences:
-  # Glimpse adds your own view here when it starts (`me`, "My calendar", self_view: true):
+  # Kalends adds your own view here when it starts (`me`, "My calendar", self_view: true):
   # every calendar in full, locked until you set its password in the settings panel.
   partner:
     title: "My week"
@@ -151,7 +151,7 @@ audiences:
       step_minutes: 30                  # start times every 15, 30 or 60 minutes
       message: "Meetings are on Zoom unless we say otherwise."
       auto_confirm: false               # true: picked open times are booked straight away
-      calendar: office_hours            # a Glimpse calendar that confirmed meetings are added to
+      calendar: office_hours            # a Kalends calendar that confirmed meetings are added to
       meeting_link: https://zoom.us/j/1234567890  # shown only once a meeting is confirmed
       location: null                    # or a room / address
       booking: false                    # a public booking page with its own link
@@ -159,7 +159,7 @@ audiences:
       platforms: [zoom, jitsi]          # a new meeting per booking; they pick one (see video_calls)
     widget:                             # optional: free/busy view to embed in a website
       enabled: false
-      slug: ${GLIMPSE_AUD_COWORKERS_WIDGET_SLUG}  # its own link (the panel makes one)
+      slug: ${KALENDS_AUD_COWORKERS_WIDGET_SLUG}  # its own link (the panel makes one)
       sites: [https://www.example.edu]  # sites allowed to embed it; [] = any
       days: 7
 
@@ -173,11 +173,11 @@ people:
   alex:
     name: Alex
     audience: partner
-    slug: ${GLIMPSE_PERSON_ALEX_SLUG}
+    slug: ${KALENDS_PERSON_ALEX_SLUG}
   priya:
     name: Priya
     audience: coworkers
-    slug: ${GLIMPSE_PERSON_PRIYA_SLUG}
+    slug: ${KALENDS_PERSON_PRIYA_SLUG}
     expires: 2026-12-31
 
 # Shown to viewers in other time zones ("Show Brandon's time") and on expired links.
@@ -200,19 +200,19 @@ notify:                                 # switch on any mix; secrets live in .en
   ntfy:                                 # phone push via the free ntfy app
     enabled: true
     server: https://ntfy.sh
-    topic: ${GLIMPSE_NTFY_TOPIC}        # long and unguessable; subscribe to it in the app
+    topic: ${KALENDS_NTFY_TOPIC}        # long and unguessable; subscribe to it in the app
   email:
     enabled: false
     smtp_host: smtp.gmail.com           # Gmail: use an app password
     smtp_port: 587
     security: starttls                  # starttls (587), ssl (465) or none
     username: you@gmail.com
-    password: ${GLIMPSE_SMTP_PASSWORD}
+    password: ${KALENDS_SMTP_PASSWORD}
     to_addr: null                       # where your notifications go (default: the sender)
     notify_requester: true              # also email people about their own requests
   discord:
     enabled: false
-    webhook_url: ${GLIMPSE_DISCORD_WEBHOOK}
+    webhook_url: ${KALENDS_DISCORD_WEBHOOK}
   panel_url: null                       # link in notifications; default: your tailnet address :8443
 
 # ---------------------------------------------------------------------------
@@ -226,7 +226,7 @@ video_calls:
     enabled: false
     account_id: null
     client_id: null
-    client_secret: null                 # the panel keeps it in .env (GLIMPSE_ZOOM_CLIENT_SECRET)
+    client_secret: null                 # the panel keeps it in .env (KALENDS_ZOOM_CLIENT_SECRET)
     user: you@example.com               # the Zoom login the meetings belong to
     waiting_room: true
   teams:                                # an app registration in Microsoft Entra (work/school accounts)
@@ -236,12 +236,12 @@ video_calls:
   google:                               # an OAuth client in Google Cloud (Meet REST API)
     enabled: false
     client_id: null
-    client_secret: null                 # the panel keeps it in .env (GLIMPSE_GOOGLE_CLIENT_SECRET)
+    client_secret: null                 # the panel keeps it in .env (KALENDS_GOOGLE_CLIENT_SECRET)
     open_access: false                  # true: anyone with the link joins without asking
   webex:                                # an integration at developer.webex.com
     enabled: false
     client_id: null
-    client_secret: null                 # the panel keeps it in .env (GLIMPSE_WEBEX_CLIENT_SECRET)
+    client_secret: null                 # the panel keeps it in .env (KALENDS_WEBEX_CLIENT_SECRET)
   jitsi:                                # nothing to set up: a new random room per booking
     enabled: false
     server: https://meet.jit.si         # or your own Jitsi server

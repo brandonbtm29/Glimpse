@@ -15,15 +15,15 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 from test_policy import SECRETS_FROM_COWORKERS
 
-from glimpse.config import Level
-from glimpse.core import Glimpse, period_bounds
-from glimpse.policy import BUSY_TITLE, VisibleEvent
-from glimpse.render.periods import build_heat, busy_minutes, heat_level
-from glimpse.store import ConfigStore
-from glimpse.web.app import create_app
-from glimpse.web.auth import feed_token
-from glimpse.web.state import SeenStore, ago
-from glimpse.web.viewer import person_viewer
+from kalends.config import Level
+from kalends.core import Kalends, period_bounds
+from kalends.policy import BUSY_TITLE, VisibleEvent
+from kalends.render.periods import build_heat, busy_minutes, heat_level
+from kalends.store import ConfigStore
+from kalends.web.app import create_app
+from kalends.web.auth import feed_token
+from kalends.web.state import SeenStore, ago
+from kalends.web.viewer import person_viewer
 
 NY = ZoneInfo("America/New_York")
 DUBAI = ZoneInfo("Asia/Dubai")  # UTC+4 all year: 8 h ahead of New York in late October
@@ -39,10 +39,10 @@ def store(config_path):
 def build(store, mutate=None, today=WEEK, seen=None):
     if mutate:
         store.update(mutate)
-    g = Glimpse(store.current())
+    g = Kalends(store.current())
     g.cache.refresh_all()
     g.today = lambda: today
-    app = create_app(g.cfg, glimpse=g, background_refresh=False, seen=seen)
+    app = create_app(g.cfg, kalends=g, background_refresh=False, seen=seen)
     return g, TestClient(app, follow_redirects=False)
 
 
@@ -166,7 +166,7 @@ def test_deleting_an_audience_removes_its_people(store):
 
 
 def test_people_must_reference_real_audiences(store):
-    from glimpse.config import ConfigError
+    from kalends.config import ConfigError
 
     with pytest.raises(ConfigError, match="not defined"):
         store.update(lambda d: d.add_person("Ghost", "nope"))
@@ -204,23 +204,23 @@ def find(evs, title):
     return next(e for e in evs if e.title == title)
 
 
-def test_viewer_ahead_sees_late_events_on_the_next_day(glimpse):
-    partner = glimpse.cfg.audiences["partner"]
-    evs = glimpse.week(partner, WEEK, DUBAI)
+def test_viewer_ahead_sees_late_events_on_the_next_day(kalends):
+    partner = kalends.cfg.audiences["partner"]
+    evs = kalends.week(partner, WEEK, DUBAI)
     movie = find(evs, "Late movie")  # Fri 22:30 New York
     assert movie.start.tzinfo == DUBAI
     assert (movie.start.weekday(), movie.start.hour, movie.start.minute) == (5, 6, 30)  # Sat 06:30
 
 
-def test_all_day_events_keep_their_date(glimpse):
-    partner = glimpse.cfg.audiences["partner"]
-    bday = find(glimpse.week(partner, WEEK, DUBAI), "Mom's birthday")
+def test_all_day_events_keep_their_date(kalends):
+    partner = kalends.cfg.audiences["partner"]
+    bday = find(kalends.week(partner, WEEK, DUBAI), "Mom's birthday")
     assert bday.all_day and bday.start.date() == date(2026, 10, 30)
 
 
-def test_hour_limits_stay_on_the_owners_clock(glimpse):
-    cw = glimpse.cfg.audiences["coworkers"]
-    evs = glimpse.week(cw, WEEK, DUBAI)
+def test_hour_limits_stay_on_the_owners_clock(kalends):
+    cw = kalends.cfg.audiences["coworkers"]
+    evs = kalends.week(cw, WEEK, DUBAI)
     seminar = find(evs, "Evening seminar")  # 17:30-19:00 NY, clipped at 18:00 NY
     assert seminar.end - seminar.start == timedelta(minutes=30)
     assert seminar.start.astimezone(NY).hour == 17
@@ -228,16 +228,16 @@ def test_hour_limits_stay_on_the_owners_clock(glimpse):
     assert lab.start.hour == 17  # 09:00 NY = 17:00 Dubai
 
 
-def test_dst_change_in_owner_zone(glimpse):
-    partner = glimpse.cfg.audiences["partner"]
+def test_dst_change_in_owner_zone(kalends):
+    partner = kalends.cfg.audiences["partner"]
     utc = ZoneInfo("UTC")
-    before = [e for e in glimpse.week(partner, WEEK, utc) if e.title == "Lab work"]
-    after = [e for e in glimpse.week(partner, WEEK + timedelta(weeks=1), utc) if e.title == "Lab work"]
+    before = [e for e in kalends.week(partner, WEEK, utc) if e.title == "Lab work"]
+    after = [e for e in kalends.week(partner, WEEK + timedelta(weeks=1), utc) if e.title == "Lab work"]
     assert before[0].start.hour == 13 and after[0].start.hour == 14  # 9:00 EDT, then 9:00 EST
 
 
-def test_zone_switch_sets_cookie_and_page_follows(glimpse):
-    c = TestClient(create_app(glimpse.cfg, glimpse=glimpse, background_refresh=False), follow_redirects=False)
+def test_zone_switch_sets_cookie_and_page_follows(kalends):
+    c = TestClient(create_app(kalends.cfg, kalends=kalends, background_refresh=False), follow_redirects=False)
     r = c.get(f"/a/{COWORKER_SLUG}/week/{W}?tz=Asia/Dubai")
     assert r.status_code == 303 and r.headers["location"] == f"/a/{COWORKER_SLUG}/week/{W}"
     assert re.match(r'glimpse_tz="?Asia/Dubai"?;', r.headers["set-cookie"])

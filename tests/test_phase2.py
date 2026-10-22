@@ -12,13 +12,13 @@ from conftest import PARTNER_PASSWORD, PARTNER_SLUG, WEEK
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
-from glimpse.config import ConfigError, Level, RuleCfg, build_config
-from glimpse.core import Glimpse
-from glimpse.events import Event
-from glimpse.policy import BUSY_TITLE, cluster_duplicates, fold, rule_matches, visible_events
-from glimpse.store import ConfigStore
-from glimpse.web.app import create_app
-from glimpse.web.auth import feed_token
+from kalends.config import ConfigError, Level, RuleCfg, build_config
+from kalends.core import Kalends
+from kalends.events import Event
+from kalends.policy import BUSY_TITLE, cluster_duplicates, fold, rule_matches, visible_events
+from kalends.store import ConfigStore
+from kalends.web.app import create_app
+from kalends.web.auth import feed_token
 
 TZ = ZoneInfo("America/New_York")
 SECRET = "s" * 40
@@ -301,14 +301,14 @@ def test_busy_duplicates_merge_into_one_block():
 def ruled(config_path):
     store = ConfigStore(config_path)
     store.update(lambda d: d.set_rule(None, {"match": ["luigi's"], "fields": ["location"], "action": "busy"}))
-    g = Glimpse(store.current())
+    g = Kalends(store.current())
     g.cache.refresh_all()
     return g
 
 
 def test_rule_holds_across_html_excel_and_ics(ruled):
     client = TestClient(
-        create_app(ruled.cfg, glimpse=ruled, background_refresh=False), follow_redirects=False
+        create_app(ruled.cfg, kalends=ruled, background_refresh=False), follow_redirects=False
     )
     w = WEEK.isoformat()
     client.post(f"/a/{PARTNER_SLUG}/login", data={"password": PARTNER_PASSWORD, "next": w})

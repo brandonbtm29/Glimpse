@@ -13,16 +13,16 @@ from argon2 import PasswordHasher
 from conftest import COWORKER_SLUG, PARTNER_SLUG, WEEK
 from fastapi.testclient import TestClient
 
-from glimpse.availability import busy_times, open_slots
-from glimpse.config import ConfigError
-from glimpse.core import Glimpse, week_range
-from glimpse.notify import Note, Notifier, invite_ics
-from glimpse.requests_store import RequestStore
-from glimpse.school import Schedule, read_feed
-from glimpse.store import ConfigStore
-from glimpse.web.admin import create_admin_app
-from glimpse.web.app import create_app
-from glimpse.web.runtime import Runtime
+from kalends.availability import busy_times, open_slots
+from kalends.config import ConfigError
+from kalends.core import Kalends, week_range
+from kalends.notify import Note, Notifier, invite_ics
+from kalends.requests_store import RequestStore
+from kalends.school import Schedule, read_feed
+from kalends.store import ConfigStore
+from kalends.web.admin import create_admin_app
+from kalends.web.app import create_app
+from kalends.web.runtime import Runtime
 
 ADMIN_PW = "admin-password-123"
 NOW = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)  # Sat Oct 24, 8:00 AM New York
@@ -40,7 +40,7 @@ def enable_requests(d, aid="coworkers", **extra):
     node["requests"] = {"enabled": True, "lengths": [30, 60], "notice_hours": 24, "days_ahead": 14, **extra}
 
 
-def pin(g: Glimpse) -> Glimpse:
+def pin(g: Kalends) -> Kalends:
     g.today = lambda: NOW.astimezone(g.cfg.tz).date()
     g.now = lambda: NOW
     return g
@@ -49,10 +49,10 @@ def pin(g: Glimpse) -> Glimpse:
 def public(store, mutate=None, reqs=None, notifier=None):
     if mutate:
         store.update(mutate)
-    g = pin(Glimpse(store.current()))
+    g = pin(Kalends(store.current()))
     g.cache.refresh_all()
     reqs = reqs or RequestStore(None)
-    app = create_app(g.cfg, glimpse=g, background_refresh=False, requests=reqs, notifier=notifier)
+    app = create_app(g.cfg, kalends=g, background_refresh=False, requests=reqs, notifier=notifier)
     return g, reqs, TestClient(app, follow_redirects=False)
 
 
@@ -63,13 +63,13 @@ def panel(store):
             d.section("admin"),
             "password_hash",
             PasswordHasher().hash(ADMIN_PW),
-            "GLIMPSE_ADMIN_PASSWORD_HASH",
+            "KALENDS_ADMIN_PASSWORD_HASH",
         )
     )
     store.update(lambda d: d.section("admin").__setitem__("secure_cookies", False))
     store.update(enable_requests)
     rt = Runtime(store.current(), store)
-    pin(rt.glimpse)
+    pin(rt.kalends)
     rt.refresh()
     c = TestClient(create_admin_app(rt), follow_redirects=False)
     c.post("/login", data={"password": ADMIN_PW})
@@ -134,7 +134,7 @@ def test_removing_a_calendar_cleans_new_references(store):
 
 def test_open_slots_skip_every_busy_event_even_hidden_ones(store):
     store.update(enable_requests)
-    g = pin(Glimpse(store.current()))
+    g = pin(Kalends(store.current()))
     g.cache.refresh_all()
     aud = g.cfg.audiences["coworkers"]
     slots = open_slots(g, aud, 30, NOW)
@@ -150,7 +150,7 @@ def test_open_slots_skip_every_busy_event_even_hidden_ones(store):
 
 def test_ignored_calendars_and_holds_change_open_times(store):
     store.update(enable_requests)
-    g = pin(Glimpse(store.current()))
+    g = pin(Kalends(store.current()))
     g.cache.refresh_all()
     aud = g.cfg.audiences["coworkers"]
     base = {s.start for s in open_slots(g, aud, 30, NOW)}
@@ -158,7 +158,7 @@ def test_ignored_calendars_and_holds_change_open_times(store):
     held = {s.start for s in open_slots(g, aud, 30, NOW, [(hold_start, hold_start + timedelta(minutes=30))])}
     assert hold_start not in held
     store.update(lambda d: d.section("availability").__setitem__("ignore_calendars", list(d.calendars)))
-    g2 = pin(Glimpse(store.current()))
+    g2 = pin(Kalends(store.current()))
     g2.cache.refresh_all()
     assert len(open_slots(g2, g2.cfg.audiences["coworkers"], 30, NOW)) >= len(base)
 
@@ -339,7 +339,7 @@ def make_request(rt, start="2026-10-27T10:00:00-04:00", end="2026-10-27T10:30:00
 
 def test_panel_lists_and_accepts_requests(panel):
     rt, c = panel
-    free = open_slots(rt.glimpse, rt.cfg.audiences["coworkers"], 30, NOW)[0]
+    free = open_slots(rt.kalends, rt.cfg.audiences["coworkers"], 30, NOW)[0]
     item = make_request(rt, start=free.start.isoformat(), end=free.end.isoformat())
     clash = make_request(rt, name="Clash", start="2026-10-27T16:00:00-04:00", end="2026-10-27T16:30:00-04:00")
     mails = []
@@ -370,9 +370,9 @@ def test_counter_proposal_round_trip(panel, store):
     assert got.status == "countered"
     assert got.counter_start_dt == datetime(2026, 10, 28, 11, 0, tzinfo=rt.cfg.tz)
     # The requester accepts on their status page.
-    g = rt.glimpse
+    g = rt.kalends
     pub = TestClient(
-        create_app(g.cfg, glimpse=g, background_refresh=False, requests=rt.requests, notifier=rt.notifier),
+        create_app(g.cfg, kalends=g, background_refresh=False, requests=rt.requests, notifier=rt.notifier),
         follow_redirects=False,
     )
     rt.notifier.owner = lambda *a, **k: None
@@ -700,12 +700,12 @@ def test_school_mode_pauses_classes_and_labels_weeks(store, tmp_path):
     before = c0.get(f"/a/{COWORKER_SLUG}/week/{WEEK}").text
     assert ">Class<" in before or "Class" in before
     store.update(school_on(tmp_path))
-    g = pin(Glimpse(store.current()))
+    g = pin(Kalends(store.current()))
     g.cache.refresh_all()
     with httpx.Client() as client:
         g.school.refresh(client)
     assert [t.name for t in g.school.feed_terms][:1] == ["Fall 2026"]
-    c = TestClient(create_app(g.cfg, glimpse=g, background_refresh=False), follow_redirects=False)
+    c = TestClient(create_app(g.cfg, kalends=g, background_refresh=False), follow_redirects=False)
     html = c.get(f"/a/{COWORKER_SLUG}/week/{WEEK}").text
     assert "Fall 2026" in html and "Fall Break" in html
     # The class during fall break is gone, other calendars are untouched.
@@ -722,7 +722,7 @@ def test_typed_in_terms_win_and_viewers_can_be_kept_out(store, tmp_path):
         d.section("school")["show_viewers"] = False
 
     store.update(mutate)
-    g = pin(Glimpse(store.current()))
+    g = pin(Kalends(store.current()))
     with httpx.Client() as client:
         g.school.refresh(client)
     assert g.school.schedule.terms[0].name == "Autumn Term"
@@ -795,7 +795,7 @@ def test_new_admin_pages_render(panel):
 
 
 def test_date_ranges_across_years_keep_both_years():
-    from glimpse.render.week import fmt_range
+    from kalends.render.week import fmt_range
 
     assert fmt_range(date(2025, 10, 20), date(2027, 10, 24)) == "Oct 20, 2025 – Oct 24, 2027"
 
@@ -806,8 +806,8 @@ def test_date_ranges_across_years_keep_both_years():
 def test_feed_can_leave_out_calendars_viewers_already_have(store):
     from conftest import PARTNER_PASSWORD  # noqa: F401 - the partner feed needs no password
 
-    from glimpse.web.auth import feed_token
-    from glimpse.web.viewer import audience_viewer
+    from kalends.web.auth import feed_token
+    from kalends.web.viewer import audience_viewer
 
     g, _, c = public(store)
     v = audience_viewer(g.cfg, "partner")

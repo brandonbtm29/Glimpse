@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>{% block title %}Kalends settings{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='5' width='26' height='24' rx='5' fill='%233b6fd8'/%3E%3Crect x='3' y='5' width='26' height='7' rx='3' fill='%232a55b0'/%3E%3Ccircle cx='16' cy='20' r='4' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/kalends.css?v={{ version }}">
+  <link rel="stylesheet" href="/static/admin.css?v={{ version }}">
+  <script src="/static/admin.js?v={{ version }}" defer></script>
+  <script src="/static/events.js?v={{ version }}" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="admin">
+{% block shell %}
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><rect x="3" y="5" width="26" height="24" rx="5" fill="#3b6fd8"/><rect x="3" y="5" width="26" height="7" rx="3" fill="#2a55b0"/><circle cx="16" cy="20" r="4" fill="#fff"/></svg>
+      <span>Kalends</span>
+    </div>
+    <nav class="sidenav" aria-label="Settings">
+      {% for key, label, href, tabs in sections %}
+      <a href="{{ href }}" {% if section == key %}aria-current="page"{% endif %}>{{ label }}{% if key == 'meetings' and pending_requests %} <span class="count">{{ pending_requests }}</span>{% endif %}</a>
+      {% if key == 'sharing' %}{% for aid, a in cfg.audiences.items() %}
+      <a class="sub" href="/audiences/{{ aid }}" {% if nav == 'audience' and aid_current == aid %}aria-current="page"{% endif %}>{{ a.title }}</a>
+      {% endfor %}{% endif %}
+      {% endfor %}
+    </nav>
+    <a class="version" href="/setup#updates">Kalends {{ version }}{% if update %} <span class="dot-new" title="Version {{ update.release.version }} is available">update</span>{% endif %}</a>
+    <form method="post" action="/logout" class="signout">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="link">Sign out</button>
+    </form>
+  </aside>
+  <main class="content">
+    {% if section_tabs %}
+    <nav class="section-tabs" aria-label="{{ section_label }}">
+      {% for key, label, href in section_tabs %}
+      <a href="{{ href }}" {% if section_tab == key %}aria-current="page"{% endif %}>{{ label }}{% if key == 'requests' and pending_requests %} <span class="count">{{ pending_requests }}</span>{% endif %}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+    {% if reload_error %}<p class="error" role="alert">config.yaml was edited by hand and has a problem, so the previous settings are still in use: {{ reload_error }}</p>{% endif %}
+    {% if flash %}<p class="flash" role="status">{{ flash }}</p>{% endif %}
+    {% if update and nav == 'overview' %}<p class="notice">Kalends {{ update.release.version }} is available. <a href="/setup#updates">See what's new and update</a>.</p>{% endif %}
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% block content %}{% endblock %}
+    <p class="fine foot-note">Changes save to config.yaml and .env on this PC (previous versions kept as .bak) and go live immediately.</p>
+  </main>
+</div>
+{% endblock %}
+</body>
+</html>

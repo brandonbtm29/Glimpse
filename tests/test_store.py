@@ -1,8 +1,8 @@
 import pytest
 import yaml
 
-from glimpse.config import ConfigError, Level, load_config
-from glimpse.store import ConfigStore, init_files, make_id
+from kalends.config import ConfigError, Level, load_config
+from kalends.store import ConfigStore, init_files, make_id
 
 
 def test_init_creates_working_setup(tmp_path):
@@ -23,7 +23,7 @@ def test_add_calendar_keeps_link_out_of_yaml(config_path):
     cfg = store.update(lambda d: d.add_calendar("GelPure Board", secret, "Meeting"))
     assert cfg.calendars["gelpure_board"].url == secret
     assert "SECRET123" not in config_path.read_text()
-    assert "GLIMPSE_CAL_GELPURE_BOARD_URL=" in (config_path.parent / ".env").read_text()
+    assert "KALENDS_CAL_GELPURE_BOARD_URL=" in (config_path.parent / ".env").read_text()
     assert (config_path.parent / "config.yaml.bak").exists()
 
 
@@ -35,7 +35,7 @@ def test_existing_env_names_and_comments_preserved(config_path):
     cfg = store.update(lambda d: d.rotate_slug("partner"))
     text = env.read_text()
     assert text.startswith("# my notes\n")
-    assert "PARTNER_SLUG=" in text and "GLIMPSE_AUD_PARTNER_SLUG" not in text  # reused the existing name
+    assert "PARTNER_SLUG=" in text and "KALENDS_AUD_PARTNER_SLUG" not in text  # reused the existing name
     assert cfg.audiences["partner"].slug != old_slug
     assert "\n\n" not in text
 
@@ -60,7 +60,7 @@ def test_remove_calendar_cleans_up(config_path):
     assert "classes" not in cfg.calendars
     assert "classes" not in cfg.audiences["coworkers"].calendars
     cfg = store.update(lambda d: d.remove_calendar("temp"))
-    assert "GLIMPSE_CAL_TEMP_URL" not in (config_path.parent / ".env").read_text()
+    assert "KALENDS_CAL_TEMP_URL" not in (config_path.parent / ".env").read_text()
 
 
 def test_audience_lifecycle(config_path):
@@ -80,7 +80,7 @@ def test_audience_lifecycle(config_path):
     assert cfg.audiences["lab_group"].password_hash is None
     cfg = store.update(lambda d: d.remove_audience("lab_group"))
     assert "lab_group" not in cfg.audiences
-    assert "GLIMPSE_AUD_LAB_GROUP" not in (config_path.parent / ".env").read_text()
+    assert "KALENDS_AUD_LAB_GROUP" not in (config_path.parent / ".env").read_text()
 
 
 def test_unquoted_yaml_times(config_path):

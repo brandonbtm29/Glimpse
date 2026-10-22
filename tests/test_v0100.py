@@ -10,9 +10,9 @@ from conftest import WEEK
 from fastapi.testclient import TestClient
 from test_v050 import csrf_rev, panel, store  # noqa: F401
 
-from glimpse.config import ConfigError
-from glimpse.web.app import create_app
-from glimpse.web.auth import feed_token
+from kalends.config import ConfigError
+from kalends.web.app import create_app
+from kalends.web.auth import feed_token
 
 W = WEEK.isoformat()
 PW = "my own long password"
@@ -26,8 +26,8 @@ def with_self(rt):
 
 
 def public(rt):
-    g = rt.glimpse
-    return TestClient(create_app(rt.cfg, glimpse=g, background_refresh=False), follow_redirects=False)
+    g = rt.kalends
+    return TestClient(create_app(rt.cfg, kalends=g, background_refresh=False), follow_redirects=False)
 
 
 def test_ensure_self_is_first_secret_and_only_once(store):

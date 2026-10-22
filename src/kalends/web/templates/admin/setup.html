@@ -1,0 +1,169 @@
+{% extends "admin/base.html" %}
+{% block title %}This computer · Kalends settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>This computer</h1>
+    <p class="muted">Setup: {{ steps | selectattr('done') | list | length }} of {{ steps | length }} done · Tailscale, starting automatically and updates</p>
+  </div>
+  <a class="button secondary" href="/setup?refresh=1">Check again</a>
+</header>
+
+<ol class="checklist">
+  {% for st in steps %}
+  <li class="{{ 'done' if st.done else 'todo' }}"><span class="tick" aria-hidden="true">{{ '✓' if st.done else loop.index }}</span><a href="{{ st.href }}">{{ st.label }}</a></li>
+  {% endfor %}
+</ol>
+
+{% if result %}
+  {% if result.approve_url %}
+  <div class="notice">
+    <p><b>Tailscale needs your OK first.</b> Open this page, approve, then press the button again:</p>
+    <p><a class="button" href="{{ result.approve_url }}" target="_blank" rel="noopener">Approve in Tailscale</a></p>
+  </div>
+  {% else %}
+  <div class="error" role="alert">
+    <p><b>That didn't work.</b> {% if result.timed_out %}Tailscale didn't answer in time.{% endif %}</p>
+    {% if result.output %}<pre class="code">{{ result.output[:800] }}</pre>{% endif %}
+  </div>
+  {% endif %}
+{% endif %}
+
+<section class="panel">
+  <div class="panelhead"><h2>Tailscale</h2>
+    {% if ts.running %}<span class="status ok">Connected</span>{% elif ts.installed %}<span class="status bad">{{ ts.state or 'Not connected' }}</span>{% else %}<span class="status wait">Not installed</span>{% endif %}
+  </div>
+
+  {% if not ts.installed %}
+  <p class="muted">Tailscale gives Kalends a secure address for your own devices and public share links, with nothing to configure on your router. It's free for personal use.</p>
+  <ol class="howto">
+    <li><a href="https://tailscale.com/download" target="_blank" rel="noopener">Download Tailscale</a> and install it on this computer.</li>
+    <li>Sign in (Google, Microsoft, Apple or GitHub accounts all work).</li>
+    <li>Install it on your phone or laptop too, signed in to the same account.</li>
+    <li>Come back here and press <b>Check again</b>.</li>
+  </ol>
+  {% elif not ts.running %}
+  <p class="muted">Tailscale is installed but not connected. Open Tailscale from the system tray (or menu bar) and sign in, then press <b>Check again</b>.</p>
+  {% else %}
+  <p class="muted">This computer is <b>{{ ts.dns_name }}</b> on your tailnet.</p>
+  {% if ts.magic_dns is false %}<p class="notice">MagicDNS is off, so your other devices can't find this computer by name. Turn it on in the <a href="https://login.tailscale.com/admin/dns" target="_blank" rel="noopener">Tailscale admin console → DNS</a>.</p>{% endif %}
+
+  <div class="setup-row">
+    <div>
+      <h3>Settings panel on your devices</h3>
+      <p class="muted small">Only devices signed in to your Tailscale account can reach it, and they still need the admin password.</p>
+      {% if ts.panel_published %}
+      <div class="copyrow"><input type="text" readonly value="{{ ts.panel_url }}" aria-label="Settings panel address"><button type="button" class="secondary small" data-copy="{{ ts.panel_url }}">Copy</button></div>
+      {% endif %}
+    </div>
+    <div class="setup-action">
+      {% if ts.panel_published %}<span class="status ok">On</span>{% else %}
+      <form method="post" action="/setup/tailscale/panel"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Turn on</button></form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="setup-row">
+    <div>
+      <h3>Public share links</h3>
+      <p class="muted small">Lets people you send a link to open their page from anywhere. They only ever see what you allow, and nothing else is reachable.</p>
+      {% if ts.public_published %}<p class="small">Links start with <code>{{ ts.public_url }}/a/…</code></p>
+      <form method="post" action="/setup/check-public" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="secondary small">Test from the internet</button>
+        <span class="hint">Checks the way someone without Tailscale would open a link.</span>
+      </form>
+      {% if check %}
+      <div class="{{ 'flash' if check.ok else 'error' }} check-result" role="status">
+        <p><b>{{ check.summary }}</b></p>
+        {% if check.detail %}<p class="small">{{ check.detail }}</p>{% endif %}
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+    <div class="setup-action">
+      {% if ts.public_published %}
+      <span class="status ok">On</span>
+      <form method="post" action="/setup/tailscale/public-off" data-confirm="Turn off public links? Nobody will be able to open their share link until you turn this back on."><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="secondary small">Turn off</button></form>
+      {% else %}
+      <form method="post" action="/setup/tailscale/public"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Turn on</button></form>
+      {% endif %}
+    </div>
+  </div>
+  <p class="fine">The first time, Tailscale may ask you to approve HTTPS and Funnel in your browser. Kalends will show you the link.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panelhead"><h2>Start automatically</h2>
+    {% if auto.enabled %}<span class="status ok">On</span>{% else %}<span class="status wait">Off</span>{% endif %}
+  </div>
+  {% if not auto.supported %}
+  <p class="muted">Automatic start isn't supported on this system; start Kalends with <code>kalends service</code>.</p>
+  {% else %}
+  <p class="muted">{{ auto.detail }}. Kalends runs quietly in the background, with no window, and restarts itself if anything goes wrong. Logs are in the <code>logs</code> folder.</p>
+  <form method="post" action="/setup/autostart" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if auto.enabled %}
+    <button type="submit" name="action" value="off" class="secondary">Turn off</button>
+    {% else %}
+    <button type="submit" name="action" value="on">Turn on</button>
+    {% endif %}
+  </form>
+  {% endif %}
+</section>
+
+<section class="panel" id="updates">
+  <div class="panelhead"><h2>Updates</h2>
+    {% if upd.update_available %}<span class="status wait">Version {{ upd.release.version }} available</span>{% else %}<span class="muted small">You have version {{ version }}</span>{% endif %}
+  </div>
+  {% if upd_error %}<p class="error" role="alert">{{ upd_error }}</p>{% endif %}
+  {% if upd_result %}
+  <p class="{{ 'flash' if upd_result.ok else 'error' }}">
+    <b>Last update ({{ upd_result.at.replace('T', ' ')[:16] }}):</b> {{ upd_result.message }}
+    {% if not upd_result.ok and upd_result.rolled_back_to %} Kalends went back to the version you had, so nothing changed.{% endif %}
+    {% if not upd_result.ok %} Details are in <code>logs/update.log</code>.{% endif %}
+  </p>
+  {% endif %}
+
+  {% if upd.update_available %}
+  <p>Kalends <b>{{ upd.release.version }}</b> was released{% if upd.release.published %} on {{ upd.release.published }}{% endif %}. You're running {{ version }}.</p>
+  {% if upd.release.notes %}
+  <details class="notes" open>
+    <summary>What's new</summary>
+    <div class="notes-body">{{ upd.release.notes | release_notes }}</div>
+  </details>
+  {% endif %}
+  {% if upd_ready.ok %}
+  <form method="post" action="/setup/updates/apply" class="inline-form" data-confirm="Update Kalends to {{ upd.release.version }}? Share links pause for under a minute while it restarts.">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Update now</button>
+    <span class="hint">Your settings are backed up first. If the new version doesn't start, Kalends goes back to this one by itself.</span>
+  </form>
+  {% else %}
+  <p class="notice">{{ upd_ready.reason }} <a href="{{ upd.release.url }}" target="_blank" rel="noopener">Get {{ upd.release.version }} on GitHub</a>.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">You're up to date{% if upd.release %} (the newest release is {{ upd.release.version }}){% endif %}.
+    Last checked {{ upd.checked_label }}{% if not cfg.updates.check %} · automatic checks are off in Settings{% endif %}.</p>
+  {% if upd.error %}<p class="fine">{{ upd.error }}</p>{% endif %}
+  {% endif %}
+  <form method="post" action="/setup/updates/check" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="secondary small">Check now</button>
+    <a class="small" href="https://github.com/{{ repo }}/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+  </form>
+</section>
+
+{% if not cfg.calendars or not cfg.audiences %}
+<section class="panel">
+  <h2>Then: your calendars</h2>
+  <p class="muted">Add each calendar's private feed link, then create an audience (e.g. "Partner" or "Coworkers") and choose what they see.</p>
+  <div class="actions">
+    <a class="button" href="/calendars">Add a calendar</a>
+    <a class="button secondary" href="/sharing">Create an audience</a>
+  </div>
+</section>
+{% endif %}
+<p class="fine support-line">Kalends is free and open source. <a href="https://github.com/{{ cfg.updates.repo }}#support" target="_blank" rel="noopener">Support its development</a></p>
+{% endblock %}

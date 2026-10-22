@@ -12,12 +12,12 @@ from argon2 import PasswordHasher
 from conftest import COWORKER_SLUG, PARTNER_PASSWORD, PARTNER_SLUG, WEEK
 from fastapi.testclient import TestClient
 
-from glimpse.config import ALL_WEEKS, MARKERS
-from glimpse.core import Glimpse, allowed_week_bounds
-from glimpse.store import ConfigStore
-from glimpse.web.admin import create_admin_app
-from glimpse.web.app import create_app
-from glimpse.web.runtime import Runtime
+from kalends.config import ALL_WEEKS, MARKERS
+from kalends.core import Kalends, allowed_week_bounds
+from kalends.store import ConfigStore
+from kalends.web.admin import create_admin_app
+from kalends.web.app import create_app
+from kalends.web.runtime import Runtime
 
 W = WEEK.isoformat()
 ADMIN_PW = "admin-password-123"
@@ -26,10 +26,10 @@ ADMIN_PW = "admin-password-123"
 def public(store, mutate=None):
     if mutate:
         store.update(mutate)
-    g = Glimpse(store.current())
+    g = Kalends(store.current())
     g.cache.refresh_all()
     g.today = lambda: WEEK
-    return g, TestClient(create_app(g.cfg, glimpse=g, background_refresh=False), follow_redirects=False)
+    return g, TestClient(create_app(g.cfg, kalends=g, background_refresh=False), follow_redirects=False)
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ def test_busy_blocks_never_carry_a_shape(store):
 
 
 def test_bad_marker_rejected(store):
-    from glimpse.config import ConfigError
+    from kalends.config import ConfigError
 
     with pytest.raises(ConfigError):
         store.update(lambda d: d.calendars["lab"].__setitem__("marker", "skull"))
@@ -145,7 +145,7 @@ def test_all_weeks_and_zero(store):
 
 
 def test_feed_is_capped_even_with_all_weeks(store):
-    from glimpse.web.auth import feed_token
+    from kalends.web.auth import feed_token
 
     g, c = public(store, lambda d: d.audiences["coworkers"].update(weeks_ahead=None, weeks_behind=None))
     body = c.get(f"/a/{COWORKER_SLUG}/feed/{feed_token(g.cfg, 'coworkers')}.ics").text
@@ -178,7 +178,7 @@ def panel(store):
             d.section("admin"),
             "password_hash",
             PasswordHasher().hash(ADMIN_PW),
-            "GLIMPSE_ADMIN_PASSWORD_HASH",
+            "KALENDS_ADMIN_PASSWORD_HASH",
         )
     )
     store.update(lambda d: d.section("admin").__setitem__("secure_cookies", False))
@@ -199,7 +199,7 @@ def tokens(c, path):
 def test_calendars_page_title_is_clean(panel):
     rt, c = panel
     title = re.search(r"<title>(.*?)</title>", c.get("/calendars").text, re.S).group(1)
-    assert title == "Calendars · Glimpse settings"
+    assert title == "Calendars · Kalends settings"
 
 
 def test_audiences_hub_and_sidebar(panel):

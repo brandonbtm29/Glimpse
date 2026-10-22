@@ -1,12 +1,14 @@
-# Glimpse
+# Kalends
 
-[![CI](https://github.com/brandonbtm29/Glimpse/actions/workflows/ci.yml/badge.svg)](https://github.com/brandonbtm29/Glimpse/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/brandonbtm29/Glimpse)](https://github.com/brandonbtm29/Glimpse/releases/latest)
+[![CI](https://github.com/brandonbtm29/Kalends/actions/workflows/ci.yml/badge.svg)](https://github.com/brandonbtm29/Kalends/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/brandonbtm29/Kalends)](https://github.com/brandonbtm29/Kalends/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Share your schedule without sharing your calendar.**
 
-Glimpse merges your Google, Outlook/Microsoft 365 and iCloud calendars into one weekly view, then lets you decide, person by person and calendar by calendar, how much each viewer sees. Your partner can see everything; coworkers can see "Busy" blocks during work hours; a calendar can be hidden from someone entirely. Each audience gets its own link, with an optional password.
+*Kalends* (KAL-endz) were the first day of each month in the Roman calendar, and the word "calendar" comes from it. The project was called **Glimpse** until version 0.11; existing installs update in place and keep their links, subscriptions and settings.
+
+Kalends merges your Google, Outlook/Microsoft 365 and iCloud calendars into one weekly view, then lets you decide, person by person and calendar by calendar, how much each viewer sees. Your partner can see everything; coworkers can see "Busy" blocks during work hours; a calendar can be hidden from someone entirely. Each audience gets its own link, with an optional password.
 
 It runs on your own computer. Raw calendar data never leaves it; only already-filtered pages do.
 
@@ -39,12 +41,12 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 - **Day, week, month, 3-month and year views**, chosen per audience. The longer views are heat maps of how busy each day is, never titles, plus multi-day trips at whatever level that audience may see.
 - **Time zones**: viewers see your schedule in their own time (detected, or picked from a list), with your time a click away. Hour limits always stay on your clock.
 - **Your own view**: an automatic *My calendar* page with every calendar in full (private events included), behind its own password, plus one phone subscription that merges all your calendars.
-- **Glimpse calendars**: make calendars right in Glimpse (no other account needed), add one-off or repeating events in the panel, and share one as a subscription link for phones and calendar apps.
-- **Meeting requests and booking**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, or let open times be booked straight away. Confirmed meetings can land on a Glimpse calendar automatically, and there's an optional public booking page. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
+- **Kalends calendars**: make calendars right in Kalends (no other account needed), add one-off or repeating events in the panel, and share one as a subscription link for phones and calendar apps.
+- **Meeting requests and booking**: an audience (say, coworkers) can ask for a meeting by picking one of your open times or suggesting one. You accept, decline or propose another time from the panel, or let open times be booked straight away. Confirmed meetings can land on a Kalends calendar automatically, and there's an optional public booking page. Open times come from *all* your calendars, so a hidden appointment still blocks the slot without revealing anything about it.
 - **A new Zoom, Teams, Google Meet, Webex or Jitsi Meet meeting for every booking**: the person booking picks from the services you offer, each confirmed meeting gets its own link (shared only once it's confirmed), and cancelling deletes it. Or just use one fixed link.
 - **Notifications on your phone, by email or in Discord**: switch on any mix of the three to hear about new requests right away.
 - **Website widget**: a small free/busy view of the next few days (no titles) for a lab, course or personal site, with an optional "Request a meeting" button. It has its own link and you choose which sites may embed it.
-- **School mode**: tell Glimpse your semesters (typed in, or read from your school's academic calendar feed). Viewers see "Fall 2026 · Week 7" and break days, and class events pause over breaks and between terms.
+- **School mode**: tell Kalends your semesters (typed in, or read from your school's academic calendar feed). Viewers see "Fall 2026 · Week 7" and break days, and class events pause over breaks and between terms.
 - **Excel download** of any visible week or month (works on phones too), and a **subscribe-able ICS feed** so viewers can add your (filtered) schedule to their own calendar app.
 - Recurring events, moved/cancelled instances, all-day and overnight events, and daylight-saving changes all handled.
 - **One double-click install** on Windows and macOS, then a guided setup in the browser. No administrator rights needed.
@@ -66,7 +68,7 @@ It runs on your own computer. Raw calendar data never leaves it; only already-fi
 ```
                          ┌──────────────── your always-on PC ────────────────┐
 Google  ─┐               │                                                   │
-Outlook ─┼── ICS feeds ──►  Glimpse  ── :8000 public pages ── Tailscale Funnel ──► anyone with a link
+Outlook ─┼── ICS feeds ──►  Kalends  ── :8000 public pages ── Tailscale Funnel ──► anyone with a link
 iCloud  ─┘               │           ── :8001 settings     ── Tailscale Serve  ──► only your devices
                          └───────────────────────────────────────────────────┘
 ```
@@ -90,11 +92,11 @@ The test suite checks these rules directly, e.g. that no forbidden word appears 
 Requires Python 3.11+.
 
 ```bash
-git clone https://github.com/brandonbtm29/Glimpse.git
-cd Glimpse
+git clone https://github.com/brandonbtm29/Kalends.git
+cd Kalends
 python -m venv .venv
 .venv/bin/pip install -e .            # Windows: .venv\Scripts\pip install -e .
-.venv/bin/glimpse -c examples/demo/config.yaml serve --no-admin
+.venv/bin/kalends -c examples/demo/config.yaml serve --no-admin
 ```
 
 Then open:
@@ -106,30 +108,30 @@ Then open:
 
 ### 1. Install Tailscale (once)
 
-[Download Tailscale](https://tailscale.com/download) and sign in on the computer that will host Glimpse, and on the phone or laptop you'll manage it from, using the same account. The free Personal plan is enough.
+[Download Tailscale](https://tailscale.com/download) and sign in on the computer that will host Kalends, and on the phone or laptop you'll manage it from, using the same account. The free Personal plan is enough.
 
-### 2. Install Glimpse
+### 2. Install Kalends
 
-Get a copy into a permanent folder (e.g. your Documents folder). The best way is with [git](https://git-scm.com/downloads), because then Glimpse can update itself from the settings panel:
+Get a copy into a permanent folder (e.g. your Documents folder). The best way is with [git](https://git-scm.com/downloads), because then Kalends can update itself from the settings panel:
 
 ```bash
-git clone https://github.com/brandonbtm29/Glimpse.git
+git clone https://github.com/brandonbtm29/Kalends.git
 ```
 
-(Or download the [latest release](https://github.com/brandonbtm29/Glimpse/releases/latest) as a ZIP and unzip it. Everything works the same, except updates are done by hand.) Then:
+(Or download the [latest release](https://github.com/brandonbtm29/Kalends/releases/latest) as a ZIP and unzip it. Everything works the same, except updates are done by hand.) Then:
 
 | Host | Do this |
 | --- | --- |
-| **Windows** | Double-click **`Install Glimpse.cmd`**. If Windows asks, choose *Run*. |
-| **macOS** | Right-click **`Install Glimpse.command`** → *Open* (only the first time; after that a double-click works). |
+| **Windows** | Double-click **`Install Kalends.cmd`**. If Windows asks, choose *Run*. |
+| **macOS** | Right-click **`Install Kalends.command`** → *Open* (only the first time; after that a double-click works). |
 | **Linux** | Run `./scripts/unix/install.sh` |
 
-The installer needs no administrator rights. It installs Python 3.12 for you if it's missing (Windows, with your OK), sets everything up in the folder, makes Glimpse start automatically when you sign in, adds **Glimpse settings** to the Start menu (Windows), and opens your browser.
+The installer needs no administrator rights. It installs Python 3.12 for you if it's missing (Windows, with your OK), sets everything up in the folder, makes Kalends start automatically when you sign in, adds **Kalends settings** to the Start menu (Windows), and opens your browser.
 
 ### 3. Finish in the browser
 
-1. **Choose an admin password.** This first page only works on the computer running Glimpse.
-2. **Settings › This computer:** press **Turn on** for *Settings panel on your devices* and *Public share links*. The first time, Tailscale may ask you to approve HTTPS/Funnel; Glimpse shows you the link, so approve it and press the button again. Glimpse fills in your public address on its own.
+1. **Choose an admin password.** This first page only works on the computer running Kalends.
+2. **Settings › This computer:** press **Turn on** for *Settings panel on your devices* and *Public share links*. The first time, Tailscale may ask you to approve HTTPS/Funnel; Kalends shows you the link, so approve it and press the button again. Kalends fills in your public address on its own.
 3. **Calendars → Add a calendar**: paste each feed link (see below), press **Test link**, then **Add**.
 4. **Who sees what → New audience**, then pick a level for each calendar. **Preview** shows exactly what each audience will see.
 5. **Overview** lists every share link with a Copy button.
@@ -138,18 +140,18 @@ From then on, manage everything from any of your devices at `https://<host-name>
 
 ### Updating
 
-Glimpse checks GitHub once a day for a new [release](https://github.com/brandonbtm29/Glimpse/releases) (you can turn this off in Settings) and shows a note in the settings panel when there is one. Your version is at the bottom of the panel's sidebar; the [changelog](CHANGELOG.md) lists what changed.
+Kalends checks GitHub once a day for a new [release](https://github.com/brandonbtm29/Kalends/releases) (you can turn this off in Settings) and shows a note in the settings panel when there is one. Your version is at the bottom of the panel's sidebar; the [changelog](CHANGELOG.md) lists what changed.
 
-- **Installed with git:** open **Settings › This computer** and, under Updates, press **Update now**. Glimpse backs up `config.yaml` and `.env` to `backups/`, switches to the new release, checks it can read your settings, and restarts. If the new version doesn't start, it goes back to the old one by itself. Details go to `logs/update.log`.
+- **Installed with git:** open **Settings › This computer** and, under Updates, press **Update now**. Kalends backs up `config.yaml` and `.env` to `backups/`, switches to the new release, checks it can read your settings, and restarts. If the new version doesn't start, it goes back to the old one by itself. Details go to `logs/update.log`.
 - **Installed from a ZIP:** unzip the new release over the same folder (your `config.yaml`, `.env` and calendar cache are never overwritten) and run the installer again.
 
-Releases only ever move forward through tagged versions; unreleased work on `main` is never installed by the update button. If a release changes the format of `config.yaml`, Glimpse upgrades your file automatically on start and keeps the original as `config.yaml.v<N>.bak`.
+Releases only ever move forward through tagged versions; unreleased work on `main` is never installed by the update button. If a release changes the format of `config.yaml`, Kalends upgrades your file automatically on start and keeps the original as `config.yaml.v<N>.bak`.
 
 ### Optional extras
 
 - **Start even before anyone signs in (Windows):** if the PC sometimes reboots and sits at the sign-in screen, run `scripts\windows\start-before-login.ps1` from an administrator PowerShell.
-- **Turn it off:** `scripts\windows\uninstall.ps1` (Windows) or `.venv/bin/glimpse autostart off` (macOS/Linux) stops Glimpse and its auto-start; your files stay put.
-- **Prefer a terminal?** Everything the installer and the This computer page do is also a `glimpse` command (below).
+- **Turn it off:** `scripts\windows\uninstall.ps1` (Windows) or `.venv/bin/kalends autostart off` (macOS/Linux) stops Kalends and its auto-start; your files stay put.
+- **Prefer a terminal?** Everything the installer and the This computer page do is also a `kalends` command (below).
 
 ### Getting your feed links
 
@@ -161,7 +163,7 @@ Each calendar has a private link that apps can read. Treat these like passwords.
 | **Outlook.com / Microsoft 365** | Settings ⚙ → Calendar → Shared calendars → **Publish a calendar** → choose the calendar and the most detailed option → Publish → copy the **ICS** link. ([help](https://support.microsoft.com/en-US/Outlook/share-your-calendar-in-outlook-com)) |
 | **iCloud** | Calendar on Mac → hover the calendar → Share → tick **Public Calendar** → copy the link (iPhone: Calendars → ⓘ → Public Calendar → Share Link). `webcal://` links work as-is. ([help](https://support.apple.com/guide/calendar/icl32362)) |
 
-Publish with full details. Glimpse does the filtering, so it needs the full data to work with. Work and school accounts sometimes disable these options; if so, ask your IT admin.
+Publish with full details. Kalends does the filtering, so it needs the full data to work with. Work and school accounts sometimes disable these options; if so, ask your IT admin.
 
 If a link ever leaks, reset it at the source: Google has a **Reset** button, Outlook lets you unpublish and republish, and iCloud lets you turn public sharing off and on. Then paste the new link under **Calendars → Edit**.
 
@@ -175,12 +177,12 @@ With **People**, each person gets their own link instead, so cutting off one per
 
 ### Your own view
 
-Glimpse makes a **My calendar** audience for you automatically; it's first under **Sharing** in the menu. It shows every calendar in full detail, including events marked private or caught by privacy rules, with no hours limit. It stays locked (its links say "not found") until you give it a password, which should be different from your settings-panel password.
+Kalends makes a **My calendar** audience for you automatically; it's first under **Sharing** in the menu. It shows every calendar in full detail, including events marked private or caught by privacy rules, with no hours limit. It stays locked (its links say "not found") until you give it a password, which should be different from your settings-panel password.
 
 - **On any device:** its link works like any audience page, so you don't need Tailscale on.
-- **On your phone's calendar:** its subscription link merges Google, Outlook, iCloud and your Glimpse calendars into one. Under *What you see*, leave out calendars your phone already has so they don't show twice, or take a calendar off the page entirely.
+- **On your phone's calendar:** its subscription link merges Google, Outlook, iCloud and your Kalends calendars into one. Under *What you see*, leave out calendars your phone already has so they don't show twice, or take a calendar off the page entirely.
 
-### Glimpse calendars
+### Kalends calendars
 
 On **My calendars**, make a calendar (say, "Plans" or "Office hours") and add events: timed or all day, one-off or repeating, with a place and notes. Mark an event **show as free** so it doesn't block meeting times, or **private** so everyone sees just "Busy". Skip a single date of a repeating event from its page.
 
@@ -195,15 +197,15 @@ Turn on **Meeting requests** on an audience's page. Its shared page then gets a 
 
 Requests wait under **Meetings › Requests** in the panel, where you accept, decline, or propose a new time, with an optional message. Or choose **Book it straight away**: picked open times are confirmed at once (suggested times still wait for you).
 
-**Meeting links and booked meetings.** On the audience's page, add your Zoom personal room, a standing Teams meeting or a Google Meet link (or a room). It's only revealed once a meeting is confirmed: on the requester's status page ("Join the meeting"), in the confirmation email and in the calendar file. You can change it per meeting when accepting. To give every booking its own meeting instead, see [Video calls](#video-calls) below. Choose a Glimpse calendar under **Add confirmed meetings to** and every confirmed meeting is added there (and removed if either of you cancels), so it shows on your pages and, through that calendar's subscription link, on your phone.
+**Meeting links and booked meetings.** On the audience's page, add your Zoom personal room, a standing Teams meeting or a Google Meet link (or a room). It's only revealed once a meeting is confirmed: on the requester's status page ("Join the meeting"), in the confirmation email and in the calendar file. You can change it per meeting when accepting. To give every booking its own meeting instead, see [Video calls](#video-calls) below. Choose a Kalends calendar under **Add confirmed meetings to** and every confirmed meeting is added there (and removed if either of you cancels), so it shows on your pages and, through that calendar's subscription link, on your phone.
 
-**Public booking page.** Tick **Also offer a public booking page** for a separate link (no password, open times only) to put in an email signature or on a website. Glimpse can't write to Google, Outlook or iCloud, so either let it add meetings to a Glimpse calendar (below) or use **Add to my calendar** (a one-event file your calendar app opens). The requester gets a private status page where they can see your answer, accept a new time, add the meeting to their calendar, or cancel. Waiting and accepted requests keep their time off the open list so nobody double-books you.
+**Public booking page.** Tick **Also offer a public booking page** for a separate link (no password, open times only) to put in an email signature or on a website. Kalends can't write to Google, Outlook or iCloud, so either let it add meetings to a Kalends calendar (below) or use **Add to my calendar** (a one-event file your calendar app opens). The requester gets a private status page where they can see your answer, accept a new time, add the meeting to their calendar, or cancel. Waiting and accepted requests keep their time off the open list so nobody double-books you.
 
 Open times are worked out from every calendar except ones you mark on the Requests page as never making you busy (holidays, birthdays), with an optional buffer between meetings. Events marked "free" never block time. Requests are kept in `requests.json` beside your config. There's a limit on how many requests one link or one network address can send.
 
 ### Video calls
 
-The **Video calls** page connects Glimpse to **Zoom**, **Microsoft Teams**, **Google Meet**, **Webex** and **Jitsi Meet**, so each booking gets a brand-new meeting with its own link, instead of everyone sharing your personal room. Then, under **Meeting requests** on an audience's page, tick which services that audience may choose from. The person booking picks one (or, if you tick only one, it's used for everyone). The link appears for them only once the meeting is confirmed, and cancelling deletes the Zoom, Teams or Webex meeting. When accepting by hand you can still paste a different link instead. If a meeting can't be made, Glimpse sends your fixed link (if you set one) and shows you why on the Requests page.
+The **Video calls** page connects Kalends to **Zoom**, **Microsoft Teams**, **Google Meet**, **Webex** and **Jitsi Meet**, so each booking gets a brand-new meeting with its own link, instead of everyone sharing your personal room. Then, under **Meeting requests** on an audience's page, tick which services that audience may choose from. The person booking picks one (or, if you tick only one, it's used for everyone). The link appears for them only once the meeting is confirmed, and cancelling deletes the Zoom, Teams or Webex meeting. When accepting by hand you can still paste a different link instead. If a meeting can't be made, Kalends sends your fixed link (if you set one) and shows you why on the Requests page.
 
 Zoom, Teams, Google Meet and Webex each need a small developer app that belongs to you, so no outside server is involved; Jitsi Meet needs nothing. The panel walks you through it, and **Make a test meeting** checks it works:
 
@@ -215,7 +217,7 @@ Zoom, Teams, Google Meet and Webex each need a small developer app that belongs 
 | **Webex** | An *Integration* at developer.webex.com with the redirect address the panel shows and the `meeting:schedules_read` and `meeting:schedules_write` scopes | Once, with Webex | Needs a Webex account that includes Meetings. |
 | **Jitsi Meet** | Nothing | None | Each booking gets a new room with a long random name on meet.jit.si (or your own Jitsi server). On meet.jit.si the first person in, you, signs in with Google, GitHub or Facebook; guests don't need an account. |
 
-Client secrets go in `.env`; the sign-ins are kept in `video-accounts.json` beside your config, which git ignores and update backups include. Glimpse renews them about once a week, so they don't lapse when nobody books for a while.
+Client secrets go in `.env`; the sign-ins are kept in `video-accounts.json` beside your config, which git ignores and update backups include. Kalends renews them about once a week, so they don't lapse when nobody books for a while.
 
 ### Notifications
 
@@ -223,7 +225,7 @@ On **Notifications**, switch on any of:
 
 | Channel | You need | Setup |
 | --- | --- | --- |
-| **Phone** | the free [ntfy](https://ntfy.sh) app | Glimpse suggests a random topic; subscribe to it in the app. Tapping a notification opens your Requests page (with Tailscale on). |
+| **Phone** | the free [ntfy](https://ntfy.sh) app | Kalends suggests a random topic; subscribe to it in the app. Tapping a notification opens your Requests page (with Tailscale on). |
 | **Email** | an email account with SMTP | For Gmail: turn on 2-Step Verification, create an app password, use `smtp.gmail.com`, port 587. Can also email requesters a confirmation and your answer, with a calendar file. |
 | **Discord** | a server you manage | Channel settings › Integrations › Webhooks › New Webhook › Copy Webhook URL. |
 
@@ -242,7 +244,7 @@ It shows busy blocks for the next days (no titles, no calendar names) in the vis
 
 ### School mode
 
-On **School**, switch it on and either paste your school's academic calendar feed (if it publishes one) or type in each term's first and last day, then its breaks and exam weeks. Glimpse reads terms from a feed by looking for events like "Classes begin", "Last day of classes", "Thanksgiving break" and "Final exams"; check what it found, and use **Copy these so I can edit them** to fix anything. Typed-in terms always win.
+On **School**, switch it on and either paste your school's academic calendar feed (if it publishes one) or type in each term's first and last day, then its breaks and exam weeks. Kalends reads terms from a feed by looking for events like "Classes begin", "Last day of classes", "Thanksgiving break" and "Final exams"; check what it found, and use **Copy these so I can edit them** to fix anything. Typed-in terms always win.
 
 Then tick the calendars that hold your classes. During breaks and between terms their events are hidden (handy when a class series runs straight through Thanksgiving), and viewers see the term, the week number and break days. Untick **Show viewers** to keep the term info to yourself.
 
@@ -258,40 +260,40 @@ Then tick the calendars that hold your classes. During breaks and between terms 
 
 ## Editing config by hand (optional)
 
-Everything the panel does is stored in `config.yaml`, with secrets in `.env` referenced as `${NAME}`. Hand edits are fine; a running Glimpse picks them up on its own, and if an edit is invalid it keeps the previous settings and shows the error in the panel. See the commented [config.example.yaml](config.example.yaml).
+Everything the panel does is stored in `config.yaml`, with secrets in `.env` referenced as `${NAME}`. Hand edits are fine; a running Kalends picks them up on its own, and if an edit is invalid it keeps the previous settings and shows the error in the panel. See the commented [config.example.yaml](config.example.yaml).
 
 ## Commands
 
-Run these from the Glimpse folder as `.venv\Scripts\glimpse …` (Windows) or `.venv/bin/glimpse …` (macOS/Linux).
+Run these from the Kalends folder as `.venv\Scripts\kalends …` (Windows) or `.venv/bin/kalends …` (macOS/Linux).
 
 | Command | What it does |
 | --- | --- |
-| `glimpse open` | open the settings panel, starting Glimpse in the background if needed |
-| `glimpse service` | run in the background, logging to `logs/glimpse.log` (what auto-start runs) |
-| `glimpse serve` | run in this window, printing to the screen; `--no-admin` skips the panel |
-| `glimpse autostart on\|off\|status` | start automatically when you sign in |
-| `glimpse init [--setup-later]` | create `config.yaml` + `.env` for a fresh setup |
-| `glimpse admin-password` | set or reset the settings-panel password |
-| `glimpse set-base-url URL` | set the public address used in share links |
-| `glimpse check` | validate config and fetch every feed; exit code 0 = all OK |
-| `glimpse preview -a NAME [-w YYYY-MM-DD]` | print what an audience sees for a week |
-| `glimpse links` | print each audience's links |
-| `glimpse new-slug` / `new-secret` / `hash-password` | generate values for hand-edited configs |
+| `kalends open` | open the settings panel, starting Kalends in the background if needed |
+| `kalends service` | run in the background, logging to `logs/kalends.log` (what auto-start runs) |
+| `kalends serve` | run in this window, printing to the screen; `--no-admin` skips the panel |
+| `kalends autostart on\|off\|status` | start automatically when you sign in |
+| `kalends init [--setup-later]` | create `config.yaml` + `.env` for a fresh setup |
+| `kalends admin-password` | set or reset the settings-panel password |
+| `kalends set-base-url URL` | set the public address used in share links |
+| `kalends check` | validate config and fetch every feed; exit code 0 = all OK |
+| `kalends preview -a NAME [-w YYYY-MM-DD]` | print what an audience sees for a week |
+| `kalends links` | print each audience's links |
+| `kalends new-slug` / `new-secret` / `hash-password` | generate values for hand-edited configs |
 
 All commands take `-c path/to/config.yaml` (default `./config.yaml`) and `-e path/to/.env` (default: beside the config).
 
 ## Good to know
 
 - Feeds refresh every 10 minutes by default (Settings). Google and Outlook may themselves update their published feeds only every few minutes to hours, so very recent changes can take a while to show up.
-- If a feed fails, Glimpse keeps showing the last good copy; the Overview shows which calendar has a problem.
+- If a feed fails, Kalends keeps showing the last good copy; the Overview shows which calendar has a problem.
 - All-day events at the `busy` level are hidden by default (they're usually birthdays and reminders). There's a checkbox per audience to show them.
 - Events marked "show as free" never appear as Busy, only at `title`/`full`.
 - Already share a calendar with someone directly (say, an iCloud calendar with your partner)? On their audience's page, leave it out of the subscription so its events don't show up twice in their calendar app.
 - Click or tap any event to see its full title and details (whatever that viewer is allowed to see).
-- Zoom, Teams and Google Meet meetings are made with your own accounts through your own developer apps. Glimpse only asks permission to create (and for Zoom, Teams and Webex, delete) meetings, nothing else.
+- Zoom, Teams and Google Meet meetings are made with your own accounts through your own developer apps. Kalends only asks permission to create (and for Zoom, Teams and Webex, delete) meetings, nothing else.
 - The calendar-subscription link works without the password (calendar apps can't sign in), so treat it like the password, or turn subscriptions off for that audience.
-- Forgot the admin password? On the host, run `glimpse admin-password`.
-- Something not working? Check `logs/glimpse.log` in the Glimpse folder. It never contains your feed links.
+- Forgot the admin password? On the host, run `kalends admin-password`.
+- Something not working? Check `logs/kalends.log` in the Kalends folder. It never contains your feed links.
 - Testing over plain `http://127.0.0.1` works in Chrome and Edge. If another browser keeps returning you to a login page, it's refusing the secure cookie over plain http; use the `https://…ts.net` address instead.
 
 ## Development
@@ -303,14 +305,14 @@ ruff check src tests && ruff format --check src tests
 pip install pre-commit && pre-commit install   # secret scanning + lint on every commit
 ```
 
-The privacy rules live in [`src/glimpse/policy.py`](src/glimpse/policy.py) as pure functions with no web or network code, so they're easy to test. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+The privacy rules live in [`src/kalends/policy.py`](src/kalends/policy.py) as pure functions with no web or network code, so they're easy to test. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## Support
 
-Glimpse is free and open source, and always will be. If it's useful to you:
+Kalends is free and open source, and always will be. If it's useful to you:
 
 - **Star the repository** and tell a friend who juggles several calendars.
-- **Report bugs and ideas** in [Issues](https://github.com/brandonbtm29/Glimpse/issues).
+- **Report bugs and ideas** in [Issues](https://github.com/brandonbtm29/Kalends/issues).
 - **Chip in toward development**, once or monthly, whatever amount you like:
   - [GitHub Sponsors](https://github.com/sponsors/brandonbtm29)
   - [Ko-fi](https://ko-fi.com/brandonbtm29)
@@ -319,7 +321,7 @@ Shared pages can show a small "Support the project" link at the bottom; it's off
 
 ## How this was built
 
-Glimpse is written and maintained by Brandon T. McReynolds with the help of an AI coding assistant: it was co-developed with Claude (Anthropic) from the first version, and commits list Claude as a co-author. Brandon directs the work, reviews and tests the changes, and is responsible for the project.
+Kalends is written and maintained by Brandon T. McReynolds with the help of an AI coding assistant: it was co-developed with Claude (Anthropic) from the first version, and commits list Claude as a co-author. Brandon directs the work, reviews and tests the changes, and is responsible for the project.
 
 ## License
 

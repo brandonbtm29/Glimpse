@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or update Glimpse on macOS or Linux. On a Mac, double-click "Install Glimpse.command".
+# Install or update Kalends on macOS or Linux. On a Mac, double-click "Install Kalends.command".
 # No sudo needed. Safe to run again (that's how you update); your settings are never overwritten.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -7,7 +7,7 @@ cd "$ROOT"
 say() { printf '  %s\n' "$*"; }
 step() { printf '\n[%s/5] %s\n' "$1" "$2"; }
 
-printf '\n  Glimpse installer\n  Folder: %s\n' "$ROOT"
+printf '\n  Kalends installer\n  Folder: %s\n' "$ROOT"
 
 step 1 "Checking for Python 3.11 or newer"
 PY=""
@@ -29,8 +29,8 @@ if [ -z "$PY" ]; then
 fi
 say "Using $PY"
 
-step 2 "Installing Glimpse"
-if [ -x .venv/bin/glimpse ]; then
+step 2 "Installing Kalends"
+if [ -x .venv/bin/kalends ]; then
   # Stop a running copy from this folder so it can be updated (auto-start brings it back).
   pkill -f "$ROOT/.venv/bin/" 2>/dev/null || true
 fi
@@ -43,17 +43,17 @@ step 3 "Settings"
 if [ -f config.yaml ]; then
   say "Keeping your existing config.yaml and .env."
 else
-  .venv/bin/glimpse -c config.yaml init --setup-later >/dev/null
+  .venv/bin/kalends -c config.yaml init --setup-later >/dev/null
   say "Created config.yaml and .env. You'll choose a password in the browser."
 fi
 chmod 600 .env 2>/dev/null || true
 
 step 4 "Starting automatically when you log in"
-.venv/bin/glimpse -c config.yaml autostart on
+.venv/bin/kalends -c config.yaml autostart on
 
-step 5 "Starting Glimpse"
-.venv/bin/glimpse -c config.yaml open
+step 5 "Starting Kalends"
+.venv/bin/kalends -c config.yaml open
 
-printf '\n  Done. Glimpse is running in the background.\n'
-say "Settings: http://127.0.0.1:8001   (or run: .venv/bin/glimpse open)"
-say "Logs:     $ROOT/logs/glimpse.log"
+printf '\n  Done. Kalends is running in the background.\n'
+say "Settings: http://127.0.0.1:8001   (or run: .venv/bin/kalends open)"
+say "Logs:     $ROOT/logs/kalends.log"

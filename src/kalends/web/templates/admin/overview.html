@@ -1,0 +1,113 @@
+{% extends "admin/base.html" %}
+{% block title %}Overview · Kalends settings{% endblock %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Overview</h1>
+    <p class="muted">{{ feeds | length }} calendar{{ '' if feeds|length == 1 else 's' }} · {{ auds | length }} audience{{ '' if auds|length == 1 else 's' }}</p>
+  </div>
+  <form method="post" action="/refresh" data-live-refresh>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="back" value="/">
+    <button type="submit" class="secondary">Refresh calendars now</button>
+  </form>
+</header>
+
+{% if steps_done < steps | length %}
+<section class="panel setup-card">
+  <div class="panelhead">
+    <h2>Finish setting up <span class="muted small">{{ steps_done }} of {{ steps | length }} done</span></h2>
+    <a href="/setup">Finish setup &rarr;</a>
+  </div>
+  <ol class="checklist compact">
+    {% for st in steps %}
+    <li class="{{ 'done' if st.done else 'todo' }}"><span class="tick" aria-hidden="true">{{ '✓' if st.done else loop.index }}</span><a href="{{ st.href }}">{{ st.label }}</a></li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+{% if support_note %}
+<section class="panel support-note">
+  <div class="panelhead">
+    <h2>You're all set</h2>
+    <form method="post" action="/support/dismiss" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="link">Don't show again</button>
+    </form>
+  </div>
+  <p class="muted">Kalends is free and always will be. If it's useful to you, you can chip in toward its development, whatever amount you like, once. <a href="{{ support_url }}" target="_blank" rel="noopener">Support Kalends</a></p>
+</section>
+{% endif %}
+
+{% if pending_requests %}
+<p class="notice"><a href="/requests">{{ pending_requests }} meeting request{{ '' if pending_requests == 1 else 's' }}</a> waiting for your answer.</p>
+{% endif %}
+{% if cfg.self_audience and not cfg.self_audience[1].password_hash %}
+<p class="notice subtle">Your own view, <a href="/audiences/{{ cfg.self_audience[0] }}">{{ cfg.self_audience[1].title }}</a>, is ready: every calendar in one page and one phone subscription. Set its password to switch it on.</p>
+{% endif %}
+
+{% if local_base %}
+<p class="notice">Your public address is still set to <code>{{ cfg.server.base_url }}</code>, so the links below only work on this PC. Set your Tailscale Funnel address in <a href="/settings">Settings</a>.</p>
+{% endif %}
+
+{% if not feeds %}
+<section class="panel empty-state">
+  <h2>Start by adding a calendar</h2>
+  <p class="muted">Paste the private feed link from Google, Outlook or iCloud. Kalends checks it before saving.</p>
+  <a class="button" href="/calendars">Add a calendar</a>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panelhead">
+    <h2>Share links</h2>
+    <a href="/sharing">Who sees what &rarr;</a>
+  </div>
+  {% if auds %}
+  <ul class="rows">
+    {% for a in auds %}
+    <li class="row-item">
+      <div class="row-main">
+        <a class="row-title" href="/audiences/{{ a.id }}">{{ a.aud.title }}</a>
+        <span class="tag {{ 'lock' if a.aud.password_hash else 'open' }}">{{ 'Password' if a.aud.password_hash else 'Link only' }}</span>
+        {% if a.aud.hours %}<span class="tag">{{ a.aud.hours.start.strftime('%H:%M') }}–{{ a.aud.hours.end.strftime('%H:%M') }}</span>{% endif %}
+        <span class="tag">Default: {{ a.aud.default.value }}</span>
+      </div>
+      <div class="copyrow">
+        <input type="text" readonly value="{{ a.link }}" aria-label="Link for {{ a.aud.title }}">
+        <button type="button" class="secondary small" data-copy="{{ a.link }}">Copy link</button>
+        <a class="button secondary small" href="/preview?view_as={{ a.id }}">Preview</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No audiences yet. Create one on <a href="/sharing">Who sees what</a>.</p>
+  {% endif %}
+</section>
+
+{% if feeds %}
+<section class="panel">
+  <div class="panelhead">
+    <h2>Calendar health</h2>
+    <span class="refresh-progress" hidden><span class="rp-text"></span> <button type="button" class="secondary small rp-stop">Stop</button></span>
+    <a href="/calendars">Manage &rarr;</a>
+  </div>
+  <table class="table">
+    <thead><tr><th>Calendar</th><th>Status</th><th class="num">This week</th><th>Last updated</th></tr></thead>
+    <tbody>
+    {% for f in feeds %}
+      <tr data-cid="{{ f.id }}">
+        <td><span class="dot" style="--ev: {{ f.color }}"></span><a href="/calendars/{{ f.id }}">{{ f.cal.name }}</a> <span class="muted small">{{ f.provider }}</span></td>
+        <td class="st">{% if f.status == 'ok' %}<span class="status ok">OK</span>{% elif f.status == 'error' %}<span class="status bad" title="{{ f.error }}">Problem</span>{% else %}<span class="status wait">Waiting</span>{% endif %}</td>
+        <td class="num cnt">{{ f.count }}</td>
+        <td class="muted upd">{% if f.updated %}{{ fmt_day(f.updated.date()) }}, {{ fmt_time(f.updated) }}{% else %}–{% endif %}</td>
+      </tr>
+      {% if f.status == 'error' %}<tr class="errrow" data-err="{{ f.id }}"><td colspan="4">{{ f.error }}{% if f.count %} · still showing the last good copy{% endif %}</td></tr>{% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

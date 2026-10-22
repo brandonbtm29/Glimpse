@@ -1,6 +1,6 @@
 import pytest
 
-from glimpse.config import ConfigError, Level, load_config
+from kalends.config import ConfigError, Level, load_config
 
 
 def test_loads_and_substitutes(cfg):
@@ -68,15 +68,15 @@ def test_example_config_is_valid(tmp_path):
     from argon2 import PasswordHasher
 
     (tmp_path / ".env").write_text(
-        "GLIMPSE_BASE_URL=https://x.ts.net\nGLIMPSE_SECRET_KEY=" + "k" * 40 + "\n"
+        "KALENDS_BASE_URL=https://x.ts.net\nKALENDS_SECRET_KEY=" + "k" * 40 + "\n"
         "GOOGLE_PERSONAL_ICS=https://a\nOUTLOOK_LAB_ICS=https://b\n"
         "OUTLOOK_CLASSES_ICS=https://c\nICLOUD_FAMILY_ICS=webcal://d\n"
         "PARTNER_SLUG=" + "p" * 22 + "\nCOWORKER_SLUG=" + "c" * 22 + "\n"
-        "GLIMPSE_PERSON_ALEX_SLUG=" + "a" * 22 + "\nGLIMPSE_PERSON_PRIYA_SLUG=" + "b" * 22 + "\n"
+        "KALENDS_PERSON_ALEX_SLUG=" + "a" * 22 + "\nKALENDS_PERSON_PRIYA_SLUG=" + "b" * 22 + "\n"
         f"PARTNER_PW_HASH='{PasswordHasher().hash('x' * 10)}'\n"
-        f"GLIMPSE_ADMIN_PASSWORD_HASH='{PasswordHasher().hash('y' * 10)}'\n"
-        "GLIMPSE_AUD_COWORKERS_WIDGET_SLUG=" + "w" * 22 + "\nGLIMPSE_NTFY_TOPIC=glimpse-topic\n"
-        "GLIMPSE_SMTP_PASSWORD=pw\nGLIMPSE_DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/x\n"
+        f"KALENDS_ADMIN_PASSWORD_HASH='{PasswordHasher().hash('y' * 10)}'\n"
+        "KALENDS_AUD_COWORKERS_WIDGET_SLUG=" + "w" * 22 + "\nKALENDS_NTFY_TOPIC=glimpse-topic\n"
+        "KALENDS_SMTP_PASSWORD=pw\nKALENDS_DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/x\n"
     )
     cfg = load_config(tmp_path / "config.yaml")
     assert set(cfg.audiences) == {"partner", "coworkers"}

@@ -1,0 +1,191 @@
+{% extends "admin/base.html" %}
+{% block title %}Video calls · Kalends settings{% endblock %}
+{% block head %}{% if teams_wait %}<meta http-equiv="refresh" content="{{ teams_wait.interval }}">{% endif %}{% endblock %}
+{% macro state(p) %}
+  {% set st = status[p] %}
+  {% if st == 'ready' %}<span class="status ok">Connected</span>
+  {% elif st == 'sign_in' %}<span class="status warn">Sign in needed</span>
+  {% elif st == 'setup' %}<span class="status warn">Details missing</span>
+  {% else %}<span class="status">Off</span>{% endif %}
+{% endmacro %}
+{% macro tools(p) %}
+  {% if tested and tested[0] == p %}
+  <p class="{{ 'flash' if tested[1] else 'error' }}" role="status">{% if tested[1] %}It works: Kalends made a test meeting{% if p not in ('google', 'jitsi') %} and deleted it again{% endif %}. <span class="muted small">{{ tested[2] }}</span>{% else %}Test failed: {{ tested[2] }}{% endif %}</p>
+  {% endif %}
+  {% if status[p] == 'ready' %}
+  <div class="actions">
+    <form method="post" action="/video-calls/{{ p }}/test" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="secondary small">Make a test meeting</button>
+    </form>
+    {% if p not in ('zoom', 'jitsi') %}
+    <form method="post" action="/video-calls/{{ p }}/disconnect" class="inline-form" data-confirm="Disconnect {{ names[p] }}? It stops being offered to people booking.">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="link small">Disconnect</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if used[p] %}<p class="hint">Offered on: {{ used[p] | join(', ') }}.</p>
+  {% elif status[p] == 'ready' %}<p class="hint">Not offered anywhere yet: tick it under Meeting requests on an audience's page.</p>{% endif %}
+{% endmacro %}
+{% block content %}
+<header class="pagehead">
+  <div>
+    <h1>Video calls</h1>
+    <p class="muted">Kalends can make a <strong>new meeting, with its own link, for every booking</strong> on Zoom, Microsoft Teams, Google Meet, Webex or Jitsi Meet. The link is shared only once a meeting is confirmed, and cancelling a booking deletes its Zoom, Teams or Webex meeting. Set up the services you use here, then choose which ones each audience can pick under <em>Meeting requests</em> on its page.</p>
+    <p class="hint">Zoom, Teams, Google Meet and Webex each need a free developer app that belongs to you, so no one else's server is involved. It takes about 10 minutes once; the steps are below each service. Jitsi Meet needs nothing at all. Prefer something simpler? A fixed link (your personal Zoom room, say) works without any of this.</p>
+  </div>
+</header>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% set v = cfg.video_calls %}
+
+<section class="panel" id="zoom">
+  <div class="panelhead"><h2>Zoom</h2>{{ state('zoom') }}</div>
+  <form method="post" action="/video-calls/zoom" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if v.zoom.enabled %}checked{% endif %}> Make Zoom meetings</label>
+    <div class="grid2">
+      <label>Account ID <input type="text" name="account_id" value="{{ v.zoom.account_id or '' }}" autocomplete="off" spellcheck="false"></label>
+      <label>Client ID <input type="text" name="client_id" value="{{ v.zoom.client_id or '' }}" autocomplete="off" spellcheck="false"></label>
+      <label>Client secret <input type="password" name="client_secret" value="" placeholder="{{ 'Saved (paste to change)' if v.zoom.client_secret else '' }}" autocomplete="new-password"></label>
+      <label><span>Your Zoom email</span> <input type="email" name="user" value="{{ v.zoom.user or '' }}" placeholder="you@example.com" autocomplete="off">
+        <span class="hint">The Zoom login the meetings belong to.</span></label>
+    </div>
+    <label class="check"><input type="checkbox" name="waiting_room" {% if v.zoom.waiting_room %}checked{% endif %}> Waiting room <span class="muted">(people wait until you let them in)</span></label>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {{ tools('zoom') }}
+  <details class="help">
+    <summary>How to set up Zoom</summary>
+    <ol>
+      <li>Sign in at <a href="https://marketplace.zoom.us/" target="_blank" rel="noopener">marketplace.zoom.us</a> and choose <strong>Develop &rsaquo; Build App</strong> &rsaquo; <strong>Server to Server OAuth App</strong>. Name it &ldquo;Kalends&rdquo;.</li>
+      <li>On <strong>App Credentials</strong>, copy the <strong>Account ID</strong>, <strong>Client ID</strong> and <strong>Client secret</strong> into the boxes above.</li>
+      <li>Fill in the required <strong>Information</strong> fields (name, your email).</li>
+      <li>On <strong>Scopes</strong>, add <code>meeting:write:meeting:admin</code> and <code>meeting:delete:meeting:admin</code> (older apps: <code>meeting:write:admin</code>).</li>
+      <li>On <strong>Activation</strong>, click <strong>Activate your app</strong>. Then save here and use <em>Make a test meeting</em>.</li>
+    </ol>
+    <p class="hint">If Zoom says the app can't be built, your account's owner or admin has to allow it (Account settings &rsaquo; Role management). On a free Zoom plan, meetings with 3 or more people end after 40 minutes.</p>
+  </details>
+</section>
+
+<section class="panel" id="teams">
+  <div class="panelhead"><h2>Microsoft Teams</h2>{{ state('teams') }}</div>
+  <p class="muted">Needs a <strong>work or school</strong> Microsoft account: Microsoft doesn't let apps make Teams meetings for personal (Outlook.com) accounts.{% if accounts.teams and status.teams == 'ready' %} Connected as <strong>{{ accounts.teams }}</strong>.{% endif %}</p>
+  <form method="post" action="/video-calls/teams" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if v.teams.enabled %}checked{% endif %}> Make Teams meetings</label>
+    <div class="grid2">
+      <label>Application (client) ID <input type="text" name="client_id" value="{{ v.teams.client_id or '' }}" autocomplete="off" spellcheck="false"></label>
+      <label><span>Directory (tenant) <span class="muted">(optional)</span></span> <input type="text" name="tenant" value="{{ v.teams.tenant }}" spellcheck="false">
+        <span class="hint">Leave as &ldquo;organizations&rdquo; unless the app only works in your organisation; then use its directory ID.</span></label>
+    </div>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {% if teams_wait %}
+  <div class="notice">
+    <p>Open <a href="{{ teams_wait.url }}" target="_blank" rel="noopener"><strong>{{ teams_wait.url }}</strong></a> on any device, enter the code <strong class="code-big">{{ teams_wait.user_code }}</strong>, and sign in with your work or school account. This page notices when you're done.</p>
+    <form method="post" action="/video-calls/teams/cancel" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="link small">Cancel</button>
+    </form>
+  </div>
+  {% elif status.teams in ('sign_in', 'ready') %}
+  <form method="post" action="/video-calls/teams/connect" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="{{ 'secondary small' if status.teams == 'ready' else '' }}">{{ 'Sign in again' if status.teams == 'ready' else 'Sign in to Microsoft' }}</button>
+  </form>
+  {% endif %}
+  {{ tools('teams') }}
+  <details class="help">
+    <summary>How to set up Teams</summary>
+    <ol>
+      <li>Go to <a href="https://entra.microsoft.com/" target="_blank" rel="noopener">entra.microsoft.com</a> &rsaquo; <strong>App registrations</strong> &rsaquo; <strong>New registration</strong>. Name it &ldquo;Kalends&rdquo;; for account types choose <strong>Accounts in any organizational directory</strong> (or only your organisation's). No redirect URI is needed.</li>
+      <li>Copy the <strong>Application (client) ID</strong> into the box above.</li>
+      <li>Under <strong>Authentication</strong>, turn on <strong>Allow public client flows</strong> and save.</li>
+      <li>Under <strong>API permissions</strong> &rsaquo; Add a permission &rsaquo; Microsoft Graph &rsaquo; Delegated, add <code>OnlineMeetings.ReadWrite</code>.</li>
+      <li>Save here, click <strong>Sign in to Microsoft</strong>, and enter the code it shows.</li>
+    </ol>
+    <p class="hint">With a school or company account, your IT department may have to approve the app before you can sign in (the sign-in page says &ldquo;Need admin approval&rdquo;). You can make the app registration with any Microsoft account, even if the meetings are on your school one.</p>
+  </details>
+</section>
+
+<section class="panel" id="google">
+  <div class="panelhead"><h2>Google Meet</h2>{{ state('google') }}</div>
+  {% if accounts.google and status.google == 'ready' %}<p class="muted">Connected as <strong>{{ accounts.google }}</strong>.</p>{% endif %}
+  <form method="post" action="/video-calls/google" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if v.google.enabled %}checked{% endif %}> Make Google Meet meetings</label>
+    <div class="grid2">
+      <label>Client ID <input type="text" name="client_id" value="{{ v.google.client_id or '' }}" autocomplete="off" spellcheck="false"></label>
+      <label>Client secret <input type="password" name="client_secret" value="" placeholder="{{ 'Saved (paste to change)' if v.google.client_secret else '' }}" autocomplete="new-password"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="open_access" {% if v.google.open_access %}checked{% endif %}> Anyone with the link joins straight away <span class="muted">(otherwise they ask to join and you let them in)</span></label>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {% if status.google in ('sign_in', 'ready') %}
+  <p><a class="button {{ 'secondary small' if status.google == 'ready' else '' }}" href="/video-calls/google/connect?csrf={{ csrf }}">{{ 'Sign in again' if status.google == 'ready' else 'Sign in with Google' }}</a></p>
+  {% endif %}
+  {{ tools('google') }}
+  <details class="help">
+    <summary>How to set up Google Meet</summary>
+    <ol>
+      <li>In the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud console</a>, create a project (e.g. &ldquo;Kalends&rdquo;), then <strong>APIs &amp; Services &rsaquo; Library</strong> &rsaquo; enable the <strong>Google Meet REST API</strong>.</li>
+      <li><strong>OAuth consent screen</strong> (Google Auth Platform): choose <strong>External</strong>, fill in the app name and your email. Under <strong>Audience</strong>, click <strong>Publish app</strong> so it's &ldquo;In production&rdquo;. (In &ldquo;Testing&rdquo;, Google signs you out every 7 days.) You don't need Google's verification for your own use.</li>
+      <li><strong>Clients</strong> &rsaquo; Create client &rsaquo; <strong>Web application</strong>. Under <strong>Authorized redirect URIs</strong>, add exactly:<br><code class="copyable">{{ redirect_uris.google }}</code> <button type="button" class="secondary small" data-copy="{{ redirect_uris.google }}">Copy</button></li>
+      <li>Copy the <strong>Client ID</strong> and <strong>Client secret</strong> into the boxes above, save, and click <strong>Sign in with Google</strong>. Google warns that the app isn't verified: choose <em>Advanced &rsaquo; Go to Kalends</em>, since it's your own app.</li>
+    </ol>
+    <p class="hint">Sign in from a device on your tailnet, because Google sends you back to the address above. If you reach the panel some other way, set it as the &ldquo;Settings panel address&rdquo; on <a href="/notifications">Notifications</a> and use that address here. Google Meet links can't be deleted, so a cancelled booking's link simply goes unused.</p>
+  </details>
+</section>
+
+<section class="panel" id="webex">
+  <div class="panelhead"><h2>Webex</h2>{{ state('webex') }}</div>
+  {% if accounts.webex and status.webex == 'ready' %}<p class="muted">Connected as <strong>{{ accounts.webex }}</strong>.</p>{% endif %}
+  <form method="post" action="/video-calls/webex" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if v.webex.enabled %}checked{% endif %}> Make Webex meetings</label>
+    <div class="grid2">
+      <label>Client ID <input type="text" name="client_id" value="{{ v.webex.client_id or '' }}" autocomplete="off" spellcheck="false"></label>
+      <label>Client secret <input type="password" name="client_secret" value="" placeholder="{{ 'Saved (paste to change)' if v.webex.client_secret else '' }}" autocomplete="new-password"></label>
+    </div>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {% if status.webex in ('sign_in', 'ready') %}
+  <p><a class="button {{ 'secondary small' if status.webex == 'ready' else '' }}" href="/video-calls/webex/connect?csrf={{ csrf }}">{{ 'Sign in again' if status.webex == 'ready' else 'Sign in with Webex' }}</a></p>
+  {% endif %}
+  {{ tools('webex') }}
+  <details class="help">
+    <summary>How to set up Webex</summary>
+    <ol>
+      <li>Sign in at <a href="https://developer.webex.com/" target="_blank" rel="noopener">developer.webex.com</a> with your Webex account, then open your avatar &rsaquo; <strong>My Webex Apps</strong> &rsaquo; <strong>Create a New App</strong> &rsaquo; <strong>Integration</strong>.</li>
+      <li>Name it &ldquo;Kalends&rdquo;, pick any icon, and under <strong>Redirect URI(s)</strong> add exactly:<br><code class="copyable">{{ redirect_uris.webex }}</code> <button type="button" class="secondary small" data-copy="{{ redirect_uris.webex }}">Copy</button></li>
+      <li>Under <strong>Scopes</strong>, tick <code>meeting:schedules_read</code> and <code>meeting:schedules_write</code>, then <strong>Add Integration</strong>.</li>
+      <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> (shown only once) into the boxes above, save, and click <strong>Sign in with Webex</strong>.</li>
+    </ol>
+    <p class="hint">Webex's meeting API needs a Webex account with Meetings; if the test says your account can't schedule meetings, your plan doesn't include it. Like Google, sign in from a device on your tailnet. Kalends renews the sign-in weekly so it doesn't lapse.</p>
+  </details>
+</section>
+
+<section class="panel" id="jitsi">
+  <div class="panelhead"><h2>Jitsi Meet</h2>{{ state('jitsi') }}</div>
+  <p class="muted">Free and open source, with nothing to set up: each booking gets a new room with a long random name, which works as its lock. Guests join from a browser or the Jitsi app without an account.</p>
+  <form method="post" action="/video-calls/jitsi" class="form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="rev" value="{{ rev }}">
+    <label class="check"><input type="checkbox" name="enabled" {% if v.jitsi.enabled %}checked{% endif %}> Make Jitsi Meet rooms</label>
+    <label><span>Jitsi server</span> <input type="url" name="server" value="{{ v.jitsi.server }}" spellcheck="false">
+      <span class="hint">Leave as meet.jit.si, or use your own (or your school's) Jitsi server.</span></label>
+    <div class="actions"><button type="submit">Save</button></div>
+  </form>
+  {{ tools('jitsi') }}
+  <details class="help">
+    <summary>Good to know about Jitsi</summary>
+    <p class="hint">On the free meet.jit.si, the first person into a room becomes its moderator and has to sign in with Google, GitHub or Facebook, so join a few minutes early and sign in. Everyone else joins without an account. Many universities and organisations run their own Jitsi server without that step. Jitsi rooms can't be deleted, so a cancelled booking's room simply goes unused.</p>
+  </details>
+</section>
+{% endblock %}
